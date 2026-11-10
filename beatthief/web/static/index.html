@@ -1,0 +1,1032 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BeatThief</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%231f6feb'/%3E%3Cpath d='M4 10V6m2.7 5V4m2.6 7V5m2.7 5V7' stroke='white' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-subtle: #f6f8fa;
+    --border: #d0d7de;
+    --border-muted: #d8dee4;
+    --fg: #1f2328;
+    --fg-muted: #656d76;
+    --accent: #0969da;
+    --accent-bg: #ddf4ff;
+    --btn-primary: #1f883d;
+    --btn-primary-hover: #1a7f37;
+    --danger: #cf222e;
+    --danger-bg: #ffebe9;
+    --success: #1a7f37;
+    --success-bg: #dafbe1;
+    --attention: #9a6700;
+    --attention-bg: #fff8c5;
+    --shadow: 0 1px 0 rgba(31,35,40,.04);
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1117; --bg-subtle: #161b22; --border: #30363d; --border-muted: #21262d;
+      --fg: #e6edf3; --fg-muted: #8d96a0; --accent: #4493f8; --accent-bg: #388bfd26;
+      --btn-primary: #238636; --btn-primary-hover: #2ea043;
+      --danger: #f85149; --danger-bg: #f851491a; --success: #3fb950; --success-bg: #2ea04326;
+      --attention: #d29922; --attention-bg: #bb800926; --shadow: none;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1117; --bg-subtle: #161b22; --border: #30363d; --border-muted: #21262d;
+    --fg: #e6edf3; --fg-muted: #8d96a0; --accent: #4493f8; --accent-bg: #388bfd26;
+    --btn-primary: #238636; --btn-primary-hover: #2ea043;
+    --danger: #f85149; --danger-bg: #f851491a; --success: #3fb950; --success-bg: #2ea04326;
+    --attention: #d29922; --attention-bg: #bb800926; --shadow: none;
+  }
+
+  * { box-sizing: border-box; }
+  html { color-scheme: light dark; scrollbar-gutter: stable; }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  svg { fill: currentColor; vertical-align: text-bottom; flex: none; }
+
+  /* Header + tabs */
+  header { background: var(--bg-subtle); }
+  .header-inner {
+    max-width: 1200px; margin: 0 auto; padding: 14px 16px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; }
+  .logo-mark {
+    width: 28px; height: 28px; border-radius: 6px; background: var(--accent);
+    display: grid; place-items: center; color: #fff;
+  }
+  .spacer { flex: 1; }
+  .icon-btn {
+    background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--fg-muted);
+    width: 32px; height: 32px; display: grid; place-items: center; cursor: pointer;
+  }
+  .icon-btn:hover { background: var(--bg); color: var(--fg); }
+
+  .tabs-bar { background: var(--bg-subtle); border-bottom: 1px solid var(--border); }
+  .tabs { max-width: 1200px; margin: 0 auto; padding: 0 16px; display: flex; gap: 4px; }
+  .tab {
+    background: none; border: 0; border-bottom: 2px solid transparent; color: var(--fg);
+    font: 14px var(--sans); padding: 8px 12px; cursor: pointer; display: flex; gap: 8px; align-items: center;
+    margin-bottom: -1px;
+  }
+  .tab:hover { background: var(--border-muted); border-radius: 6px 6px 0 0; }
+  .tab.active { border-bottom-color: #fd8c73; font-weight: 600; }
+  .tab .counter { font-weight: 500; }
+
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
+  .intro { margin: 0 0 20px; color: var(--fg-muted); }
+  .intro code { font-family: var(--mono); font-size: 12.5px; }
+
+  /* Box */
+  .box {
+    border: 1px solid var(--border); border-radius: 6px; background: var(--bg);
+    box-shadow: var(--shadow); margin-bottom: 24px; overflow: hidden;
+  }
+  .box-header {
+    display: flex; align-items: center; gap: 8px; padding: 10px 16px; flex-wrap: wrap;
+    background: var(--bg-subtle); border-bottom: 1px solid var(--border); font-weight: 600;
+  }
+  .counter {
+    font-size: 12px; font-weight: 500; min-width: 20px; text-align: center; padding: 0 6px;
+    border-radius: 2em; background: var(--border-muted); color: var(--fg);
+  }
+  .box-body { padding: 16px; }
+
+  /* Form */
+  textarea {
+    width: 100%; min-height: 96px; resize: vertical; padding: 8px 12px;
+    background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px;
+    font: 13px/1.5 var(--mono);
+  }
+  textarea:focus, .text-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+  textarea::placeholder, .text-input::placeholder { color: var(--fg-muted); }
+  .text-input {
+    height: 32px; padding: 0 12px; background: var(--bg); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 6px; font: 13px var(--sans); min-width: 0;
+  }
+  .form-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+  .hint { color: var(--fg-muted); font-size: 12px; }
+  kbd {
+    font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--border);
+    border-bottom-width: 2px; border-radius: 4px; background: var(--bg-subtle);
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px;
+    font: 500 14px var(--sans); border-radius: 6px; cursor: pointer; text-decoration: none !important;
+    border: 1px solid var(--border); background: var(--bg-subtle); color: var(--fg);
+  }
+  .btn:hover { background: var(--border-muted); }
+  .btn.primary { background: var(--btn-primary); border-color: rgba(31,35,40,.15); color: #fff; }
+  .btn.primary:hover { background: var(--btn-primary-hover); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .btn.sm { height: 28px; padding: 0 10px; font-size: 12px; }
+  .btn.danger:hover { color: var(--danger); border-color: var(--danger); background: var(--danger-bg); }
+  .form-error { color: var(--danger); font-size: 12px; margin-top: 8px; display: none; white-space: pre-wrap; }
+
+  .location { display: flex; gap: 8px; align-items: center; }
+  .location input { flex: 1; font-family: var(--mono); }
+  .msg { font-size: 12px; margin-top: 8px; display: none; white-space: pre-wrap; }
+  .msg.error { color: var(--danger); }
+  .msg.ok { color: var(--success); }
+
+  /* Download page lists */
+  .row {
+    display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+    border-top: 1px solid var(--border-muted);
+  }
+  .box-header + .row, .box-header + .empty, .notice + .row, .notice + .empty { border-top: 0; }
+  .row-main { flex: 1; min-width: 0; }
+  .row-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row-meta {
+    color: var(--fg-muted); font-size: 12px; display: flex; gap: 8px; align-items: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .row-meta .url { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; }
+  .row-actions { display: flex; gap: 8px; align-items: center; }
+  .empty { padding: 32px 16px; text-align: center; color: var(--fg-muted); border-top: 1px solid var(--border-muted); }
+
+  .badge {
+    font-size: 12px; font-weight: 500; line-height: 18px; padding: 0 8px; border-radius: 2em;
+    border: 1px solid transparent; display: inline-flex; align-items: center; gap: 4px; flex: none;
+  }
+  .badge.queued { color: var(--fg-muted); border-color: var(--border); }
+  .badge.cooldown { color: var(--attention); background: var(--attention-bg); font-variant-numeric: tabular-nums; }
+  .badge.downloading, .badge.converting { color: var(--accent); background: var(--accent-bg); }
+  .badge.done { color: var(--success); background: var(--success-bg); }
+  .badge.error { color: var(--danger); background: var(--danger-bg); }
+  .src { font: 11px var(--mono); color: var(--fg-muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; }
+
+  .notice {
+    display: none; padding: 10px 16px; font-size: 13px; color: var(--attention);
+    background: var(--attention-bg); border-bottom: 1px solid var(--border-muted);
+  }
+  .progress { height: 4px; background: var(--border-muted); border-radius: 2px; overflow: hidden; margin-top: 8px; }
+  .progress > div { height: 100%; background: var(--accent); transition: width .3s; }
+  .progress.indeterminate > div { width: 30% !important; animation: slide 1.2s ease-in-out infinite; }
+  @keyframes slide { from { margin-left: -30%; } to { margin-left: 100%; } }
+  .err-text { color: var(--danger); font-size: 12px; margin-top: 2px; font-family: var(--mono); white-space: pre-wrap; word-break: break-word; }
+
+  /* Library toolbar + table */
+  .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 400; }
+  .toolbar .title { font-weight: 600; }
+  .toolbar .text-input { width: 240px; }
+  .dirty-info { color: var(--attention); font-size: 12px; font-weight: 500; }
+  /* Sticky table header: it sticks to the top of the page, which needs every ancestor up to
+     the page to leave overflow alone. On narrow windows the table must scroll sideways, so
+     it becomes its own scroll area (with the header sticking inside it) instead. */
+  .box-sticky { overflow: visible; }
+  .box-sticky > .box-header { border-radius: 6px 6px 0 0; }
+  .table-wrap { overflow: auto; max-height: 75vh; }
+  @media (min-width: 1200px) { .table-wrap { overflow: visible; max-height: none; } }
+  table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 1140px; table-layout: fixed; }
+  th {
+    text-align: left; font-size: 12px; font-weight: 600; color: var(--fg-muted); white-space: nowrap;
+    padding: 8px 7px; border-bottom: 1px solid var(--border); background: var(--bg-subtle);
+    position: sticky; top: 0; z-index: 2; user-select: none;
+  }
+  th.sortable { cursor: pointer; }
+  th.sortable:hover { color: var(--fg); }
+  th .arrow { margin-left: 4px; font-size: 10px; }
+  td { padding: 4px 6px; border-bottom: 1px solid var(--border-muted); vertical-align: middle; }
+  tr:last-child td { border-bottom: 0; }
+  tbody tr:hover { background: var(--bg-subtle); }
+  td.cover-cell { width: 52px; padding-left: 12px; }
+  .cover {
+    width: 36px; height: 36px; border-radius: 4px; background: var(--bg-subtle); border: 1px solid var(--border-muted);
+    display: grid; place-items: center; color: var(--fg-muted); overflow: hidden;
+  }
+  .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  input.cell {
+    width: 100%; height: 28px; padding: 0 6px; font: 13px var(--sans); color: var(--fg);
+    background: transparent; border: 1px solid transparent; border-radius: 4px; text-overflow: ellipsis;
+  }
+  input.cell:hover { border-color: var(--border); }
+  input.cell:focus { outline: 2px solid var(--accent); outline-offset: -1px; background: var(--bg); border-color: var(--accent); }
+  input.cell.mono { font-family: var(--mono); font-size: 12px; }
+  input.cell.dirty { background: var(--attention-bg); border-color: var(--attention); }
+  .fname { font: 11px var(--mono); color: var(--fg-muted); padding: 0 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; display: block; }
+  td.num { color: var(--fg-muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  td.actions { white-space: nowrap; text-align: right; padding-right: 12px; }
+  td.actions .btn { width: 28px; padding: 0; justify-content: center; }
+  .more { padding: 12px 16px; text-align: center; border-top: 1px solid var(--border-muted); }
+
+  footer {
+    max-width: 1200px; margin: 0 auto; padding: 16px; border-top: 1px solid var(--border-muted);
+    color: var(--fg-muted); font-size: 12px; display: flex; gap: 16px; flex-wrap: wrap;
+  }
+  footer code { font-family: var(--mono); }
+
+  @media (max-width: 600px) {
+    .row { flex-wrap: wrap; }
+    .row-actions { width: 100%; justify-content: flex-end; }
+    .toolbar .text-input { width: 100%; }
+  }
+
+  /* Preview player */
+  .player { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--bg-subtle); border-top: 1px solid var(--border); }
+  .player-inner { max-width: 1200px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 12px; }
+  .p-info { width: 260px; min-width: 0; }
+  .p-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .p-sub { font-size: 12px; color: var(--danger); }
+  .p-sub:empty { display: none; }
+  .p-time { font: 12px var(--mono); color: var(--fg-muted); width: 40px; text-align: center; flex: none; }
+  #p-seek { flex: 1; min-width: 60px; accent-color: var(--accent); }
+  body.has-player { padding-bottom: 72px; }
+  .btn.on { color: var(--accent); border-color: var(--accent); }
+  tbody tr.playing { background: var(--accent-bg); }
+  tr.analyzing input.cell { opacity: .45; }
+  tr.analyzing [data-analyze] { opacity: .5; pointer-events: none; }
+  @media (max-width: 600px) { .p-info { width: 110px; } .p-time { display: none; } }
+
+  /* Settings */
+  .setting { display: flex; gap: 24px; justify-content: space-between; align-items: flex-start; padding: 16px; border-top: 1px solid var(--border-muted); }
+  .box-header + .setting { border-top: 0; }
+  .setting-text { flex: 1; min-width: 0; max-width: 420px; }
+  .setting-text label { font-weight: 600; display: block; }
+  .setting-control { flex: 1.3; min-width: 0; max-width: 640px; }
+  .setting-control select { min-width: 200px; }
+  .limits-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin: 16px 0 4px; }
+  .field label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .field .text-input { width: 100%; font-family: var(--mono); }
+  .field .hint { margin-top: 4px; }
+  .limit-summary { margin-top: 12px; font-size: 13px; }
+  .limit-summary.warn { color: var(--attention); }
+  @media (max-width: 700px) { .setting { flex-direction: column; gap: 12px; } .setting-text, .setting-control { max-width: none; width: 100%; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="logo">
+      <span class="logo-mark">
+        <svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 9.5a.75.75 0 0 1 1.5 0v-3a.75.75 0 0 1-1.5 0v3Zm2.9 2V4.5a.75.75 0 0 1 1.5 0v7a.75.75 0 0 1-1.5 0Zm2.9-1.5V6a.75.75 0 0 1 1.5 0v4a.75.75 0 0 1-1.5 0Zm2.9-1V7a.75.75 0 0 1 1.5 0v2a.75.75 0 0 1-1.5 0Z"/></svg>
+      </span>
+      BeatThief
+    </div>
+    <span class="spacer"></span>
+    <button class="icon-btn" id="theme" title="Toggle theme" aria-label="Toggle theme">
+      <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 12a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-1.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM8 0a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V.75A.75.75 0 0 1 8 0Zm0 13a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 8 13ZM2.34 2.34a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 0 1-1.06 1.06L2.34 3.4a.75.75 0 0 1 0-1.06Zm9.2 9.2a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06ZM0 8a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5H.75A.75.75 0 0 1 0 8Zm13 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 13 8ZM2.34 13.66a.75.75 0 0 1 0-1.06l1.06-1.06a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0Zm9.2-9.2a.75.75 0 0 1 0-1.06l1.06-1.06a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0Z"/></svg>
+    </button>
+  </div>
+</header>
+<div class="tabs-bar">
+  <nav class="tabs" role="tablist">
+    <button class="tab active" role="tab" data-tab="download">Download</button>
+    <button class="tab" role="tab" data-tab="library">Library <span class="counter" id="tab-count">0</span></button>
+    <button class="tab" role="tab" data-tab="settings">Settings</button>
+  </nav>
+</div>
+
+<!-- ================= Download ================= -->
+<main id="page-download">
+  <p class="intro">Download audio from YouTube and SoundCloud as WAV, FLAC, MP3 or M4A, tagged automatically with title, artist, year, genre and cover art. Paste one or more links, one per line.</p>
+
+  <section class="box">
+    <div class="box-header">New download</div>
+    <div class="box-body">
+      <textarea id="urls" spellcheck="false" autofocus
+        placeholder="https://www.youtube.com/watch?v=...&#10;https://soundcloud.com/artist/track"></textarea>
+      <div class="form-error" id="form-error"></div>
+      <div class="form-row">
+        <button class="btn primary" id="submit">
+          <svg width="16" height="16" viewBox="0 0 16 16"><path d="M7.25 1.75a.75.75 0 0 1 1.5 0v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.22 2.22V1.75ZM2.75 12a.75.75 0 0 1 .75.75v.5c0 .14.11.25.25.25h8.5a.25.25 0 0 0 .25-.25v-.5a.75.75 0 0 1 1.5 0v.5A1.75 1.75 0 0 1 12.25 15h-8.5A1.75 1.75 0 0 1 2 13.25v-.5a.75.75 0 0 1 .75-.75Z"/></svg>
+          Download
+        </button>
+        <select class="text-input" id="format" aria-label="Format"></select>
+        <span class="hint"><kbd>Ctrl</kbd> + <kbd>Enter</kbd> to submit</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="box">
+    <div class="box-header">Queue <span class="counter" id="jobs-count">0</span>
+      <span class="spacer"></span>
+      <button class="btn sm" id="dismiss-all" style="display:none">Dismiss all</button>
+    </div>
+    <div class="notice" id="cooldown-notice"></div>
+    <div id="jobs"></div>
+  </section>
+</main>
+
+<!-- ================= Library ================= -->
+<main id="page-library" hidden>
+  <section class="box box-sticky">
+    <div class="box-header">
+      <div class="toolbar" style="flex:1">
+        <span class="title">Tags</span> <span class="counter" id="files-count">0</span>
+        <input class="text-input" id="filter" type="search" placeholder="Filter by title, artist, genre, key…" aria-label="Filter">
+        <button class="btn sm" id="refresh">Refresh</button>
+        <button class="btn sm" id="analyze-missing" title="Detect BPM and key for the files below that don't have them">Analyze missing</button>
+        <span class="spacer"></span>
+        <span class="dirty-info" id="dirty-info" hidden></span>
+        <button class="btn sm" id="discard" hidden>Discard</button>
+        <button class="btn sm primary" id="save-tags" disabled>Save changes</button>
+      </div>
+    </div>
+    <div class="box-body" id="tags-msg-wrap" style="padding:0 16px" hidden><div class="msg" id="tags-msg"></div></div>
+    <div class="table-wrap">
+      <table>
+        <colgroup>
+          <col style="width:48px"><col style="width:176px"><col style="width:124px"><col style="width:112px">
+          <col style="width:60px"><col style="width:116px"><col style="width:58px"><col style="width:54px">
+          <col style="width:104px"><col style="width:54px"><col style="width:92px"><col style="width:142px">
+        </colgroup>
+        <thead>
+          <tr>
+            <th></th>
+            <th class="sortable" data-sort="title">Title</th>
+            <th class="sortable" data-sort="artist">Artist</th>
+            <th class="sortable" data-sort="album">Album</th>
+            <th class="sortable" data-sort="year">Year</th>
+            <th class="sortable" data-sort="genre">Genre</th>
+            <th class="sortable" data-sort="bpm">BPM</th>
+            <th class="sortable" data-sort="key">Key</th>
+            <th class="sortable" data-sort="comment">Comment</th>
+            <th class="sortable" data-sort="duration">Time</th>
+            <th class="sortable" data-sort="modified">Added</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="tags-body"></tbody>
+      </table>
+    </div>
+    <div id="tags-empty" class="empty" hidden></div>
+    <div class="more" id="more" hidden><button class="btn sm" id="more-btn">Show more</button></div>
+  </section>
+  <p class="hint">Edit any cell and press <kbd>Enter</kbd> to jump to the row below. <kbd>Ctrl</kbd> + <kbd>S</kbd> saves all changes. Supports WAV, AIFF, MP3, FLAC, OGG/Opus and M4A.</p>
+</main>
+
+<!-- ================= Settings ================= -->
+<main id="page-settings" hidden>
+  <section class="box">
+    <div class="box-header">Storage</div>
+    <div class="setting">
+      <div class="setting-text">
+        <label for="settings-folder">Download folder</label>
+        <div class="hint">Where new tracks are saved. The Library tab lists every audio file in this folder and its subfolders.</div>
+      </div>
+      <div class="setting-control">
+        <div class="location">
+          <input class="text-input loc-input" id="settings-folder" type="text" spellcheck="false" placeholder="~/Music/Unclassified">
+          <button class="btn loc-save" disabled>Save</button>
+        </div>
+        <div class="msg loc-msg"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="box">
+    <div class="box-header">Downloads</div>
+    <div class="setting">
+      <div class="setting-text">
+        <label for="default-format">Default format</label>
+        <div class="hint">Used for new downloads from the web UI and the command line. You can still pick another format per download.</div>
+      </div>
+      <div class="setting-control">
+        <select class="text-input" id="default-format"></select>
+        <div class="msg" id="format-msg"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="box">
+    <div class="box-header">Rate limit</div>
+    <div class="box-body">
+      <div class="hint">Keeps heavy use from getting your IP blocked (HTTP 429). It is applied to each platform separately. Waiting downloads show a countdown in the queue.</div>
+      <div class="limits-grid">
+        <div class="field">
+          <label for="lim-min_gap">Minimum wait (seconds)</label>
+          <input class="text-input lim-input" id="lim-min_gap" data-key="min_gap" type="number" min="0" max="3600" step="1">
+          <div class="hint">Between two downloads.</div>
+        </div>
+        <div class="field">
+          <label for="lim-jitter">Random extra wait (seconds)</label>
+          <input class="text-input lim-input" id="lim-jitter" data-key="jitter" type="number" min="0" max="3600" step="1">
+          <div class="hint">Added at random so requests aren't periodic.</div>
+        </div>
+        <div class="field">
+          <label for="lim-max_per_window">Downloads per window</label>
+          <input class="text-input lim-input" id="lim-max_per_window" data-key="max_per_window" type="number" min="1" max="10000" step="1">
+          <div class="hint">After this many, the next ones wait.</div>
+        </div>
+        <div class="field">
+          <label for="lim-window">Window (minutes)</label>
+          <input class="text-input lim-input" id="lim-window" data-key="window" type="number" min="1" max="1440" step="1">
+          <div class="hint">Length of the window above.</div>
+        </div>
+      </div>
+      <div class="limit-summary" id="limit-summary"></div>
+      <div class="form-row">
+        <button class="btn primary" id="limits-save" disabled>Save limits</button>
+        <button class="btn" id="limits-reset">Reset to defaults</button>
+      </div>
+      <div class="msg" id="limits-msg"></div>
+    </div>
+  </section>
+
+  <section class="box">
+    <div class="box-header">Appearance</div>
+    <div class="setting">
+      <div class="setting-text">
+        <label for="theme-select">Theme</label>
+        <div class="hint">Saved in this browser only.</div>
+      </div>
+      <div class="setting-control">
+        <select class="text-input" id="theme-select">
+          <option value="">Match system</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <p class="hint">Settings are stored in <code>config.json</code> at the project root, and the command line reads the same file, so changes apply right away.</p>
+</main>
+
+<div class="player" id="player" hidden>
+  <div class="player-inner">
+    <button class="btn sm" id="p-toggle" aria-label="Play / pause"></button>
+    <div class="p-info"><div class="p-title" id="p-title"></div><div class="p-sub" id="p-sub"></div></div>
+    <span class="p-time" id="p-cur">0:00</span>
+    <input type="range" id="p-seek" min="0" max="1000" value="0" aria-label="Seek">
+    <span class="p-time" id="p-dur">0:00</span>
+    <button class="btn sm" id="p-close" aria-label="Close player">&times;</button>
+  </div>
+  <audio id="audio"></audio>
+</div>
+
+<footer>
+  <span>Files are saved in <code id="footer-dir">&hellip;</code></span>
+  <span>Rate limit: <code id="footer-limit">&hellip;</code> per platform</span>
+  <span>Served locally &middot; <code>127.0.0.1</code></span>
+</footer>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => [...document.querySelectorAll(s)];
+const STATUS = { queued: "Queued", cooldown: "Cooldown", downloading: "Downloading", converting: "Converting", done: "Done", error: "Failed" };
+const FIELDS = ["title", "artist", "album", "year", "genre", "bpm", "key", "comment"];
+const ICON_DL = '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M7.25 1.75a.75.75 0 0 1 1.5 0v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.22 2.22V1.75ZM2.75 12a.75.75 0 0 1 .75.75v.5c0 .14.11.25.25.25h8.5a.25.25 0 0 0 .25-.25v-.5a.75.75 0 0 1 1.5 0v.5A1.75 1.75 0 0 1 12.25 15h-8.5A1.75 1.75 0 0 1 2 13.25v-.5a.75.75 0 0 1 .75-.75Z"/></svg>';
+const ICON_DEL = '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z"/></svg>';
+const ICON_PLAY = '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M4 2.5v11l9-5.5-9-5.5Z"/></svg>';
+const ICON_PAUSE = '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M4 2h3v12H4V2Zm5 0h3v12H9V2Z"/></svg>';
+const ICON_ANALYZE = '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M3 9.5a.75.75 0 0 1 1.5 0v-3a.75.75 0 0 1-1.5 0v3Zm2.9 2V4.5a.75.75 0 0 1 1.5 0v7a.75.75 0 0 1-1.5 0Zm2.9-1.5V6a.75.75 0 0 1 1.5 0v4a.75.75 0 0 1-1.5 0Zm2.9-1V7a.75.75 0 0 1 1.5 0v2a.75.75 0 0 1-1.5 0Z"/></svg>';
+const ICON_NOTE = '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M13 1.5a.75.75 0 0 0-.9-.73l-7 1.5A.75.75 0 0 0 4.5 3v7.2A2.5 2.5 0 1 0 6 12.5V5.6l5.5-1.18v4.78A2.5 2.5 0 1 0 13 11.5V1.5Z"/></svg>';
+
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const urlPath = (p) => p.split("/").map(encodeURIComponent).join("/");
+
+function fmtSize(b) {
+  const u = ["B", "KB", "MB", "GB"]; let i = 0;
+  while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+  return `${b.toFixed(i ? 1 : 0)} ${u[i]}`;
+}
+function fmtDate(ts) { return new Date(ts * 1000).toLocaleDateString([], { dateStyle: "medium" }); }
+function fmtDuration(s) {
+  if (s == null) return "";
+  s = Math.round(s);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+function fmtWait(s) {
+  s = Math.max(0, Math.round(s));
+  return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : `${s}s`;
+}
+
+/* ---------------------------------------------------------------- Theme */
+const root = document.documentElement;
+try { const t = localStorage.getItem("theme"); if (t) root.dataset.theme = t; } catch {}
+$("#theme").onclick = () => {
+  const dark = (root.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark";
+  root.dataset.theme = dark ? "light" : "dark";
+  try { localStorage.setItem("theme", root.dataset.theme); } catch {}
+  $("#theme-select").value = root.dataset.theme;
+};
+$("#theme-select").value = root.dataset.theme || "";
+$("#theme-select").onchange = (e) => {
+  const v = e.target.value;
+  if (v) root.dataset.theme = v; else delete root.dataset.theme;
+  try { v ? localStorage.setItem("theme", v) : localStorage.removeItem("theme"); } catch {}
+};
+
+/* ---------------------------------------------------------------- Tabs */
+function showTab(name, updateHash = true) {
+  if (!["library", "settings"].includes(name)) name = "download";
+  $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
+  $("#page-download").hidden = name !== "download";
+  $("#page-library").hidden = name !== "library";
+  $("#page-settings").hidden = name !== "settings";
+  if (updateHash) history.replaceState(null, "", "#" + name);
+  if (name === "library") loadFiles();
+}
+$$(".tab").forEach((t) => (t.onclick = () => showTab(t.dataset.tab)));
+
+/* ---------------------------------------------------------------- Download page */
+async function submit() {
+  const err = $("#form-error");
+  err.style.display = "none";
+  const urls = $("#urls").value.split(/\s+/).map((s) => s.trim()).filter(Boolean);
+  if (!urls.length) return;
+  $("#submit").disabled = true;
+  try {
+    const res = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ urls, format: $("#format").value }) });
+    const results = await res.json();
+    const failed = results.filter((r) => r.error);
+    $("#urls").value = failed.map((r) => r.input).join("\n");
+    if (failed.length) {
+      err.textContent = failed.map((r) => `${r.input} — ${r.error}`).join("\n");
+      err.style.display = "block";
+    }
+    refreshJobs();
+  } catch (e) {
+    err.textContent = "Could not reach the server.";
+    err.style.display = "block";
+  } finally {
+    $("#submit").disabled = false;
+  }
+}
+$("#submit").onclick = submit;
+$("#urls").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) submit(); });
+
+function renderJobs(jobs) {
+  $("#jobs-count").textContent = jobs.length;
+  $("#dismiss-all").style.display = jobs.some((j) => j.status === "done" || j.status === "error") ? "" : "none";
+  const cooling = jobs.filter((j) => j.status === "cooldown");
+  const notice = $("#cooldown-notice");
+  if (cooling.length) {
+    const next = Math.min(...cooling.map((j) => j.cooldown));
+    notice.textContent = `Cooling down to avoid platform rate limits. Next download starts in ${fmtWait(next)}.`;
+    notice.style.display = "block";
+  } else {
+    notice.style.display = "none";
+  }
+  $("#jobs").innerHTML = jobs.length ? jobs.map((j) => {
+    const active = j.status === "downloading" || j.status === "converting";
+    const bar = active || j.status === "queued" ? `
+      <div class="progress ${j.status === "converting" || (active && !j.progress) ? "indeterminate" : ""}">
+        <div style="width:${j.status === "queued" ? 0 : j.progress}%"></div>
+      </div>` : "";
+    const pct = j.status === "downloading" && j.progress ? ` ${Math.round(j.progress)}%`
+      : j.status === "cooldown" ? ` ${fmtWait(j.cooldown)}` : "";
+    const actions = j.status === "done"
+      ? `<button class="btn sm" data-edit-tags="${esc(j.files[0] || "")}">Edit tags</button>` +
+        j.files.map((f) => `<a class="btn sm" href="/files/${urlPath(f)}">Save</a>`).join("")
+      : "";
+    const dismiss = (j.status === "done" || j.status === "error")
+      ? `<button class="btn sm" data-dismiss="${j.id}">Dismiss</button>` : "";
+    return `
+      <div class="row">
+        <div class="row-main">
+          <div class="row-title">${esc(j.title || j.url)}</div>
+          <div class="row-meta"><span class="src">${esc(j.source)}</span><span class="src">${esc(j.format)}</span><span class="url">${esc(j.url)}</span></div>
+          ${j.error ? `<div class="err-text">${esc(j.error)}</div>` : ""}
+          ${bar}
+        </div>
+        <span class="badge ${j.status}">${STATUS[j.status]}${pct}</span>
+        <div class="row-actions">${actions}${dismiss}</div>
+      </div>`;
+  }).join("") : `<div class="empty">No downloads in progress.</div>`;
+}
+
+$("#dismiss-all").onclick = async () => { await fetch("/api/jobs", { method: "DELETE" }); refreshJobs(); };
+
+document.addEventListener("click", async (e) => {
+  const d = e.target.closest("[data-dismiss]");
+  if (d) { await fetch(`/api/jobs/${d.dataset.dismiss}`, { method: "DELETE" }); refreshJobs(); return; }
+  const edit = e.target.closest("[data-edit-tags]");
+  if (edit) {
+    $("#filter").value = edit.dataset.editTags.replace(/\.[^.]+$/, "");
+    state.limit = PAGE;
+    showTab("library");
+  }
+});
+
+async function refreshJobs() {
+  try { renderJobs(await fetch("/api/jobs").then((r) => r.json())); } catch {}
+}
+
+/* ---------------------------------------------------------------- Library folder */
+let savedDir = "";
+const locInputs = $$(".loc-input"), locSaves = $$(".loc-save"), locMsgs = $$(".loc-msg");
+function showMsg(el, text, kind) { el.textContent = text; el.className = "msg " + kind; el.style.display = text ? "block" : "none"; }
+const showLocMsg = (text, kind) => locMsgs.forEach((m) => showMsg(m, text, kind));
+function setDir(dir) {
+  savedDir = dir;
+  locInputs.forEach((i) => (i.value = dir));
+  locSaves.forEach((b) => (b.disabled = true));
+  $("#footer-dir").textContent = dir;
+}
+const FORMAT_LABELS = { wav: "WAV (lossless)", flac: "FLAC (lossless)", mp3: "MP3 320 kbps", m4a: "M4A (AAC 256 kbps)" };
+const limitInputs = $$(".lim-input");
+let savedLimits = "", lastDefault = null;
+const minutes = (s) => { const m = s / 60; return Number.isInteger(m) ? m : +m.toFixed(1); };
+
+function applySettings(s) {
+  setDir(s.download_dir);
+  const options = s.formats.map((f) => `<option value="${f}">${FORMAT_LABELS[f] || f.toUpperCase()}</option>`).join("");
+  // The Download page's selector follows the default, unless you picked something else by hand.
+  const pick = lastDefault === s.default_format ? $("#format").value : s.default_format;
+  lastDefault = s.default_format;
+  for (const sel of [$("#format"), $("#default-format")]) sel.innerHTML = options;
+  $("#format").value = pick;
+  $("#default-format").value = s.default_format;
+
+  const l = s.rate_limit;
+  limitInputs.forEach((i) => (i.value = i.dataset.key === "window" ? minutes(l.window) : l[i.dataset.key]));
+  savedLimits = JSON.stringify(readLimits());
+  $("#limits-save").disabled = true;
+  $("#limits-reset").disabled = JSON.stringify(l) === JSON.stringify(s.rate_limit_defaults);
+  $("#footer-limit").textContent = `${l.max_per_window} / ${minutes(l.window)} min`;
+  updateLimitSummary();
+}
+async function loadSettings() {
+  try { applySettings(await fetch("/api/settings").then((r) => r.json())); } catch {}
+}
+
+async function putSettings(body, msgEl, okText) {
+  const res = await fetch("/api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await res.json();
+  if (!res.ok) { showMsg(msgEl, data.error, "error"); return null; }
+  applySettings(data);
+  showMsg(msgEl, okText, "ok");
+  setTimeout(() => { if (msgEl.classList.contains("ok")) showMsg(msgEl, "", ""); }, 3000);
+  return data;
+}
+
+// Default format saves as soon as you pick it.
+$("#default-format").onchange = (e) => putSettings({ default_format: e.target.value }, $("#format-msg"), "Saved.");
+
+// Rate limit
+function readLimits() {
+  const out = {};
+  limitInputs.forEach((i) => (out[i.dataset.key] = i.dataset.key === "window" ? Number(i.value) * 60 : Number(i.value)));
+  return out;
+}
+function updateLimitSummary() {
+  const l = readLimits(), el = $("#limit-summary");
+  if (Object.values(l).some((v) => !isFinite(v)) || !l.window) { el.textContent = ""; return; }
+  const perHour = Math.floor(Math.min((l.max_per_window * 3600) / l.window, 3600 / Math.max(l.min_gap + l.jitter / 2, 0.1)));
+  el.classList.toggle("warn", perHour > 300);
+  el.textContent = `Roughly up to ${perHour} downloads per hour per platform.` +
+    (perHour > 300 ? " Above about 300 an hour, YouTube may start blocking anonymous downloads." : "");
+}
+limitInputs.forEach((i) => i.addEventListener("input", () => {
+  $("#limits-save").disabled = JSON.stringify(readLimits()) === savedLimits;
+  showMsg($("#limits-msg"), "", "");
+  updateLimitSummary();
+}));
+$("#limits-save").onclick = () => putSettings({ rate_limit: readLimits() }, $("#limits-msg"), "Saved. New limits apply right away.");
+$("#limits-reset").onclick = () => putSettings({ rate_limit: null }, $("#limits-msg"), "Back to the defaults.");
+// The folder field exists in both tabs; keep them in sync.
+locInputs.forEach((input) => {
+  input.addEventListener("input", () => {
+    locInputs.forEach((i) => (i.value = input.value));
+    locSaves.forEach((b) => (b.disabled = input.value.trim() === savedDir));
+    showLocMsg("", "");
+  });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") saveLocation(); });
+});
+async function saveLocation() {
+  const value = locInputs[0].value;
+  if (value.trim() === savedDir) return;
+  locSaves.forEach((b) => (b.disabled = true));
+  const res = await fetch("/api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ download_dir: value }) });
+  const data = await res.json();
+  if (!res.ok) { locSaves.forEach((b) => (b.disabled = false)); showLocMsg(data.error, "error"); return; }
+  setDir(data.download_dir);
+  showLocMsg("Saved. New downloads will go to this folder.", "ok");
+  state.edits.clear();
+  loadFiles();
+}
+locSaves.forEach((b) => (b.onclick = saveLocation));
+
+/* ---------------------------------------------------------------- Tag editor */
+const PAGE = 200;
+const state = { files: [], edits: new Map(), analyzing: new Map(), analysisErrors: [], sort: { key: "modified", dir: -1 }, limit: PAGE };
+
+const sortValue = (f, key) => {
+  if (FIELDS.includes(key)) {
+    const v = (state.edits.get(f.path) || {})[key] ?? f.tags[key];
+    return ["year", "bpm"].includes(key) ? (parseFloat(v) || 0) : String(v).toLowerCase();
+  }
+  return f[key] ?? 0;
+};
+
+function visibleFiles() {
+  const q = $("#filter").value.trim().toLowerCase();
+  let list = state.files;
+  if (q) {
+    list = list.filter((f) => [f.name, ...FIELDS.map((k) => f.tags[k])].some((v) => String(v).toLowerCase().includes(q)));
+  }
+  const { key, dir } = state.sort;
+  return [...list].sort((a, b) => {
+    const x = sortValue(a, key), y = sortValue(b, key);
+    return (x < y ? -1 : x > y ? 1 : 0) * dir;
+  });
+}
+
+const shownValue = (f, k) => (state.edits.get(f.path) || {})[k] ?? f.tags[k];
+
+function renderTags() {
+  // Keep the cursor where it was if the user is typing in a cell.
+  const a = document.activeElement;
+  const keep = a?.matches?.("input.cell") ? { path: a.dataset.path, field: a.dataset.field, s: a.selectionStart, e: a.selectionEnd } : null;
+
+  const all = visibleFiles();
+  const shown = all.slice(0, state.limit);
+  $("#tags-body").innerHTML = shown.map((f) => {
+    const edit = state.edits.get(f.path) || {};
+    const input = (k, cls = "") => {
+      const dirty = k in edit;
+      return `<input class="cell ${cls} ${dirty ? "dirty" : ""}" data-path="${esc(f.path)}" data-field="${k}" value="${esc(dirty ? edit[k] : f.tags[k])}" spellcheck="false" autocomplete="off">`;
+    };
+    const cell = (k, cls = "") => `<td>${input(k, cls)}</td>`;
+    const cover = f.has_cover
+      ? `<img loading="lazy" alt="" src="/api/cover/${urlPath(f.path)}?v=${f.modified}" onerror="this.remove()">` : ICON_NOTE;
+    return `<tr class="${state.analyzing.has(f.path) ? "analyzing" : ""}">
+      <td class="cover-cell"><div class="cover">${cover}</div></td>
+      <td>${input("title")}<div class="fname" title="${esc(f.path)}">${esc(f.path)}</div></td>
+      ${cell("artist")}${cell("album")}${cell("year", "mono")}${cell("genre")}${cell("bpm", "mono")}${cell("key", "mono")}${cell("comment")}
+      <td class="num">${fmtDuration(f.duration)}</td>
+      <td class="num" title="${fmtSize(f.size)}">${fmtDate(f.modified)}</td>
+      <td class="actions">
+        <button class="btn sm" data-play="${esc(f.path)}" title="Preview">${ICON_PLAY}</button>
+        <button class="btn sm" data-analyze="${esc(f.path)}" title="Detect BPM and key">${ICON_ANALYZE}</button>
+        <a class="btn sm" href="/files/${urlPath(f.path)}" title="Download">${ICON_DL}</a>
+        <button class="btn sm danger" data-delete="${esc(f.path)}" title="Delete file">${ICON_DEL}</button>
+      </td>
+    </tr>`;
+  }).join("");
+
+  const empty = $("#tags-empty");
+  empty.hidden = shown.length > 0;
+  if (!shown.length) {
+    empty.textContent = state.files.length ? "No files match the filter." : "No audio files in this folder yet. Downloaded tracks will appear here.";
+  }
+  $("#more").hidden = all.length <= shown.length;
+  $("#more-btn").textContent = `Show more (${all.length - shown.length} hidden)`;
+  $("#files-count").textContent = state.files.length;
+  $("#tab-count").textContent = state.files.length;
+  $$("th.sortable").forEach((th) => {
+    const active = th.dataset.sort === state.sort.key;
+    th.querySelector(".arrow")?.remove();
+    if (active) th.insertAdjacentHTML("beforeend", `<span class="arrow">${state.sort.dir > 0 ? "▲" : "▼"}</span>`);
+  });
+  const missing = all.filter((f) => (!shownValue(f, "bpm") || !shownValue(f, "key")) && !state.analyzing.has(f.path));
+  $("#analyze-missing").textContent = `Analyze missing (${missing.length})`;
+  $("#analyze-missing").disabled = !missing.length;
+  updateDirty();
+  markPlaying();
+  if (keep) {
+    const el = $$("input.cell").find((i) => i.dataset.path === keep.path && i.dataset.field === keep.field);
+    if (el) { el.focus(); try { el.setSelectionRange(keep.s, keep.e); } catch {} }
+  }
+}
+
+// Record an edit (or drop it if it equals what's on disk). Returns true if the field is now dirty.
+function setEdit(file, field, value) {
+  const edit = state.edits.get(file.path) || {};
+  if (value === file.tags[field]) delete edit[field]; else edit[field] = value;
+  Object.keys(edit).length ? state.edits.set(file.path, edit) : state.edits.delete(file.path);
+  return field in edit;
+}
+
+function countEdits() { let n = 0; state.edits.forEach((e) => (n += Object.keys(e).length)); return n; }
+function updateDirty() {
+  const n = countEdits(), files = state.edits.size;
+  $("#dirty-info").hidden = $("#discard").hidden = !n;
+  $("#dirty-info").textContent = `${n} unsaved change${n === 1 ? "" : "s"} in ${files} file${files === 1 ? "" : "s"}`;
+  $("#save-tags").disabled = !n;
+}
+
+async function loadFiles() {
+  try {
+    state.files = await fetch("/api/files").then((r) => r.json());
+    // Drop edits for files that no longer exist.
+    const paths = new Set(state.files.map((f) => f.path));
+    [...state.edits.keys()].forEach((p) => !paths.has(p) && state.edits.delete(p));
+    renderTags();
+  } catch {
+    $("#tags-empty").hidden = false;
+    $("#tags-empty").textContent = "Could not load the library.";
+  }
+}
+
+$("#tags-body").addEventListener("input", (e) => {
+  const input = e.target.closest("input.cell");
+  if (!input) return;
+  const file = state.files.find((f) => f.path === input.dataset.path);
+  if (!file) return;
+  input.classList.toggle("dirty", setEdit(file, input.dataset.field, input.value));
+  updateDirty();
+});
+
+// Enter jumps to the same column in the next row, like a spreadsheet.
+$("#tags-body").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || !e.target.matches("input.cell")) return;
+  const next = e.target.closest("tr").nextElementSibling;
+  next?.querySelector(`input[data-field="${e.target.dataset.field}"]`)?.focus();
+});
+
+document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && !$("#page-library").hidden) {
+    e.preventDefault();
+    saveTags();
+  }
+});
+
+async function saveTags() {
+  if (!countEdits()) return;
+  const btn = $("#save-tags");
+  btn.disabled = true;
+  const payload = [...state.edits].map(([path, tags]) => ({ path, tags }));
+  const msg = $("#tags-msg"), wrap = $("#tags-msg-wrap");
+  try {
+    const results = await fetch("/api/tags", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ files: payload }) }).then((r) => r.json());
+    const failed = [];
+    for (const r of results) {
+      if (r.ok) {
+        const i = state.files.findIndex((f) => f.path === r.path);
+        if (i >= 0) state.files[i] = r;
+        state.edits.delete(r.path);
+      } else {
+        failed.push(`${r.path}: ${r.error}`);
+      }
+    }
+    wrap.hidden = false;
+    if (failed.length) showMsg(msg, `Some files could not be saved:\n${failed.join("\n")}`, "error");
+    else { showMsg(msg, `Saved ${results.length} file${results.length === 1 ? "" : "s"}.`, "ok"); setTimeout(() => { if (msg.classList.contains("ok")) wrap.hidden = true; }, 3000); }
+  } catch {
+    wrap.hidden = false;
+    showMsg(msg, "Could not reach the server. Your changes are still here.", "error");
+  }
+  renderTags();
+}
+$("#save-tags").onclick = saveTags;
+$("#discard").onclick = () => { state.edits.clear(); $("#tags-msg-wrap").hidden = true; renderTags(); };
+$("#refresh").onclick = loadFiles;
+$("#filter").addEventListener("input", () => { state.limit = PAGE; renderTags(); });
+$("#more-btn").onclick = () => { state.limit += PAGE; renderTags(); };
+
+$$("th.sortable").forEach((th) => (th.onclick = () => {
+  const key = th.dataset.sort;
+  state.sort = state.sort.key === key ? { key, dir: -state.sort.dir } : { key, dir: key === "modified" ? -1 : 1 };
+  renderTags();
+}));
+
+document.addEventListener("click", async (e) => {
+  const del = e.target.closest("[data-delete]");
+  if (!del) return;
+  const path = del.dataset.delete;
+  if (!confirm(`Delete "${path}" from disk? This cannot be undone.`)) return;
+  const res = await fetch(`/api/files/${urlPath(path)}`, { method: "DELETE" });
+  if (!res.ok) { showMsg($("#tags-msg"), `Could not delete ${path}.`, "error"); $("#tags-msg-wrap").hidden = false; return; }
+  state.edits.delete(path);
+  if (playing === path) closePlayer();
+  loadFiles();
+});
+
+window.addEventListener("beforeunload", (e) => { if (countEdits()) { e.preventDefault(); e.returnValue = ""; } });
+
+/* ---------------------------------------------------------------- Preview player */
+const audio = $("#audio"), seek = $("#p-seek");
+let playing = null, seeking = false;
+
+function markPlaying() {
+  $$("[data-play]").forEach((b) => {
+    const on = b.dataset.play === playing;
+    b.innerHTML = on && !audio.paused ? ICON_PAUSE : ICON_PLAY;
+    b.classList.toggle("on", on);
+    b.closest("tr").classList.toggle("playing", on);
+  });
+  $("#p-toggle").innerHTML = audio.paused ? ICON_PLAY : ICON_PAUSE;
+}
+function playFile(path) {
+  if (playing === path) { audio.paused ? audio.play() : audio.pause(); return; }
+  const f = state.files.find((x) => x.path === path);
+  if (!f) return;
+  playing = path;
+  audio.src = `/api/stream/${urlPath(path)}`;
+  audio.play().catch(() => {});
+  const artist = shownValue(f, "artist"), title = shownValue(f, "title") || f.name;
+  $("#p-title").textContent = artist ? `${artist} – ${title}` : title;
+  $("#p-sub").textContent = "";
+  $("#p-dur").textContent = fmtDuration(f.duration) || "0:00";
+  $("#player").hidden = false;
+  document.body.classList.add("has-player");
+  markPlaying();
+}
+function closePlayer() {
+  audio.pause();
+  audio.removeAttribute("src");
+  audio.load();
+  playing = null;
+  $("#player").hidden = true;
+  document.body.classList.remove("has-player");
+  markPlaying();
+}
+["play", "pause", "ended"].forEach((ev) => audio.addEventListener(ev, markPlaying));
+audio.addEventListener("loadedmetadata", () => { $("#p-dur").textContent = fmtDuration(audio.duration); });
+audio.addEventListener("timeupdate", () => {
+  $("#p-cur").textContent = fmtDuration(audio.currentTime);
+  if (!seeking && isFinite(audio.duration)) seek.value = (audio.currentTime / audio.duration) * 1000;
+});
+audio.addEventListener("error", () => {
+  if (playing) $("#p-sub").textContent = "Your browser can't play this format (AIFF only works in Safari).";
+});
+seek.addEventListener("pointerdown", () => (seeking = true));
+seek.addEventListener("pointerup", () => (seeking = false));
+seek.addEventListener("input", () => { if (isFinite(audio.duration)) audio.currentTime = (seek.value / 1000) * audio.duration; });
+$("#p-toggle").onclick = () => { if (playing) audio.paused ? audio.play() : audio.pause(); };
+$("#p-close").onclick = closePlayer;
+// Space toggles playback unless you're typing or on a button.
+document.addEventListener("keydown", (e) => {
+  if (e.code !== "Space" || playing === null || e.target.closest("input, textarea, select, button, a")) return;
+  e.preventDefault();
+  audio.paused ? audio.play() : audio.pause();
+});
+
+/* ---------------------------------------------------------------- BPM / key analysis */
+let analysisTimer = null;
+
+// mode "missing": only fill empty BPM/Key cells. mode "force": overwrite both.
+async function analyze(paths, mode) {
+  paths = paths.filter((p) => !state.analyzing.has(p));
+  if (!paths.length) return;
+  try {
+    await fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paths }) });
+  } catch {
+    showMsg($("#tags-msg"), "Could not reach the server.", "error");
+    $("#tags-msg-wrap").hidden = false;
+    return;
+  }
+  paths.forEach((p) => state.analyzing.set(p, mode));
+  state.analysisErrors = [];
+  $("#tags-msg-wrap").hidden = true;
+  renderTags();
+  analysisTimer ??= setInterval(pollAnalysis, 1000);
+}
+
+async function pollAnalysis() {
+  let data;
+  try { data = await fetch("/api/analyze").then((r) => r.json()); } catch { return; }
+  let changed = false;
+  for (const [path, st] of Object.entries(data)) {
+    if (st.status !== "done" && st.status !== "error") continue;
+    const mode = state.analyzing.get(path);
+    state.analyzing.delete(path);
+    changed = true;
+    const file = state.files.find((f) => f.path === path);
+    if (st.status === "error") { state.analysisErrors.push(`${path}: ${st.error}`); continue; }
+    if (!file) continue;
+    for (const [field, value] of [["bpm", String(st.bpm)], ["key", st.key]]) {
+      if (mode === "force" || !shownValue(file, field)) setEdit(file, field, value);
+    }
+  }
+  for (const p of [...state.analyzing.keys()]) if (!(p in data)) { state.analyzing.delete(p); changed = true; }  // forgotten by the server
+  if (!changed) return;
+  renderTags();
+  if (state.analyzing.size) return;
+  clearInterval(analysisTimer);
+  analysisTimer = null;
+  $("#tags-msg-wrap").hidden = false;
+  if (state.analysisErrors.length) {
+    showMsg($("#tags-msg"), `${state.analysisErrors.length} file(s) could not be analysed:\n${state.analysisErrors.join("\n")}`, "error");
+  } else {
+    showMsg($("#tags-msg"), "Analysis finished. Review the highlighted BPM and Key cells, then press Save changes.", "ok");
+  }
+}
+
+$("#analyze-missing").onclick = () => analyze(
+  visibleFiles().filter((f) => !shownValue(f, "bpm") || !shownValue(f, "key")).map((f) => f.path), "missing");
+
+document.addEventListener("click", (e) => {
+  const play = e.target.closest("[data-play]");
+  if (play) return playFile(play.dataset.play);
+  const an = e.target.closest("[data-analyze]");
+  if (an) analyze([an.dataset.analyze], "force");
+});
+
+/* ---------------------------------------------------------------- Init */
+loadSettings();
+refreshJobs();
+setInterval(refreshJobs, 1000);
+showTab(location.hash.slice(1), false);
+fetch("/api/files").then((r) => r.json()).then((f) => { $("#tab-count").textContent = f.length; }).catch(() => {});
+</script>
+</body>
+</html>

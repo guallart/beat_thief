@@ -1,0 +1,299 @@
+"""Local web UI for BeatThief (Flask). Start it with:  python -m beatthief web"""
+import os
+import threading
+import time
+import uuid
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+
+from flask import Flask, Response, abort, jsonify, request, send_from_directory
+
+from .. import analysis, config, downloader, tagging, throttle
+from ..sources import validate_and_clean_url
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+app = Flask(__name__, static_folder=None)
+# One worker per platform: each platform has its own rate limit and cooldown,
+# so a cooldown on one doesn't block the other.
+executors = {
+    "youtube": ThreadPoolExecutor(max_workers=1),
+    "soundcloud": ThreadPoolExecutor(max_workers=1),
+}
+
+jobs = {}  # id -> job dict
+jobs_lock = threading.Lock()
+
+
+def _update(job_id, **fields):
+    with jobs_lock:
+        jobs[job_id].update(fields)
+
+
+def _run_job(job_id):
+    with jobs_lock:
+        url, audio_format = jobs[job_id]["url"], jobs[job_id]["format"]
+    _update(job_id, status="downloading", progress=0)
+
+    def on_wait(seconds_left):
+        if seconds_left > 0:
+            _update(job_id, status="cooldown", cooldown=round(seconds_left))
+        else:
+            _update(job_id, status="downloading", cooldown=0)
+
+    def on_progress(stage, pct, title):
+        fields = {"status": stage}
+        if pct is not None:
+            fields["progress"] = round(pct, 1)
+        if title:
+            fields["title"] = title
+        _update(job_id, **fields)
+
+    try:
+        paths = downloader.fetch_audio(url, on_progress=on_progress, on_wait=on_wait,
+                                          audio_format=audio_format)
+        _update(job_id, status="done", progress=100,
+                files=[os.path.basename(p) for p in paths],
+                title=os.path.splitext(os.path.basename(paths[0]))[0])
+    except Exception as e:
+        message = str(e).replace("ERROR: ", "").strip() or "Download failed."
+        _update(job_id, status="error", error=message)
+
+
+MAX_FILES = 5000
+tag_write_lock = threading.Lock()
+
+
+def _base_dir():
+    return config.get_download_dir().resolve()
+
+
+def _safe_file(rel):
+    """Resolve a library-relative path, refusing anything outside the library folder."""
+    base = _base_dir()
+    path = (base / rel).resolve()
+    if not path.is_relative_to(base) or not path.is_file() or not tagging.is_supported(path):
+        abort(404)
+    return base, path
+
+
+def _file_entry(base, path):
+    st = path.stat()
+    info = tagging.read_tags(path)
+    return {
+        "path": path.relative_to(base).as_posix(), "name": path.name, "size": st.st_size,
+        "modified": st.st_mtime, "duration": info["duration"], "has_cover": info["has_cover"],
+        "tags": info["tags"],
+    }
+
+
+def _list_files():
+    """All supported audio files under the library folder (recursive, hidden dirs skipped)."""
+    base = _base_dir()
+    if not base.is_dir():
+        return []
+    items = []
+    for root, dirs, files in os.walk(base):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        for name in files:
+            if name.startswith(".") or not tagging.is_supported(name):
+                continue
+            try:
+                items.append(_file_entry(base, (Path(root) / name)))
+            except Exception:
+                continue  # unreadable or corrupt file: skip it instead of breaking the list
+            if len(items) >= MAX_FILES:
+                return items
+    return sorted(items, key=lambda i: i["modified"], reverse=True)
+
+
+@app.get("/")
+def index():
+    return send_from_directory(STATIC_DIR, "index.html")
+
+
+@app.post("/api/jobs")
+def create_jobs():
+    data = request.get_json(silent=True) or {}
+    audio_format = data.get("format") or downloader.default_format()
+    if audio_format not in downloader.FORMATS:
+        return jsonify({"error": "Unsupported format."}), 400
+    results = []
+    for raw in data.get("urls", []):
+        ok, value, source, _ = validate_and_clean_url(str(raw))
+        if not ok:
+            results.append({"input": raw, "error": value})
+            continue
+        job_id = uuid.uuid4().hex[:10]
+        with jobs_lock:
+            jobs[job_id] = {
+                "id": job_id, "url": value, "source": source, "format": audio_format, "status": "queued",
+                "progress": 0, "cooldown": 0, "title": None, "files": [], "error": None,
+                "created": time.time(),
+            }
+        executors[source].submit(_run_job, job_id)
+        results.append({"input": raw, "id": job_id})
+    return jsonify(results), 202
+
+
+@app.get("/api/jobs")
+def list_jobs():
+    with jobs_lock:
+        return jsonify(sorted(jobs.values(), key=lambda j: j["created"], reverse=True))
+
+
+@app.delete("/api/jobs")
+def dismiss_finished_jobs():
+    with jobs_lock:
+        for job_id in [i for i, j in jobs.items() if j["status"] in ("done", "error")]:
+            del jobs[job_id]
+    return "", 204
+
+
+@app.delete("/api/jobs/<job_id>")
+def dismiss_job(job_id):
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if job and job["status"] in ("done", "error"):
+            del jobs[job_id]
+    return "", 204
+
+
+def _settings_payload():
+    return {
+        "download_dir": str(config.get_download_dir()),
+        "default_format": downloader.default_format(),
+        "formats": list(downloader.FORMATS),
+        "rate_limit": throttle.limits(),
+        "rate_limit_defaults": throttle.DEFAULTS,
+    }
+
+
+@app.get("/api/settings")
+def get_settings():
+    return jsonify(_settings_payload())
+
+
+@app.put("/api/settings")
+def update_settings():
+    """Body: any of {"download_dir": str, "default_format": str, "rate_limit": {...} | null}.
+    Everything is validated before anything is saved."""
+    data = request.get_json(silent=True) or {}
+    try:
+        if "default_format" in data and data["default_format"] not in downloader.FORMATS:
+            raise ValueError("Unsupported format.")
+        limits = throttle.validate_limits(data["rate_limit"]) if data.get("rate_limit") else None
+        if "download_dir" in data:
+            config.set_download_dir(data["download_dir"])  # may fail: do it before saving the rest
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    if "default_format" in data:
+        config.set_setting("default_format", data["default_format"])
+    if "rate_limit" in data:  # null / empty resets to the defaults
+        config.set_setting("rate_limit", limits)
+    return jsonify(_settings_payload())
+
+
+@app.get("/api/files")
+def list_files():
+    return jsonify(_list_files())
+
+
+@app.get("/files/<path:rel>")
+def get_file(rel):
+    base, path = _safe_file(rel)
+    return send_from_directory(base, path.relative_to(base).as_posix(), as_attachment=True)
+
+
+@app.get("/api/stream/<path:rel>")
+def stream_file(rel):
+    base, path = _safe_file(rel)
+    return send_from_directory(base, path.relative_to(base).as_posix())  # inline + Range support
+
+
+@app.delete("/api/files/<path:rel>")
+def delete_file(rel):
+    _, path = _safe_file(rel)
+    path.unlink()
+    return "", 204
+
+
+@app.get("/api/cover/<path:rel>")
+def get_cover(rel):
+    _, path = _safe_file(rel)
+    cover = tagging.read_cover(path)
+    if not cover:
+        abort(404)
+    mime, data = cover
+    return Response(data, mimetype=mime, headers={"Cache-Control": "private, max-age=3600"})
+
+
+@app.put("/api/tags")
+def update_tags():
+    """Body: {"files": [{"path": "...", "tags": {field: value, ...}}, ...]}"""
+    data = request.get_json(silent=True) or {}
+    results = []
+    for item in data.get("files", []):
+        rel = str(item.get("path", ""))
+        tags = {k: v for k, v in (item.get("tags") or {}).items() if k in tagging.FIELDS}
+        try:
+            base, path = _safe_file(rel)
+            with tag_write_lock:
+                tagging.write_tags(path, tags)
+            results.append({"path": rel, "ok": True, **_file_entry(base, path)})
+        except Exception as e:
+            reason = "File not found." if getattr(e, "code", None) == 404 else (str(e) or "Could not write tags.")
+            results.append({"path": rel, "ok": False, "error": reason})
+    return jsonify(results)
+
+
+# BPM / key analysis: results are returned to the UI (which shows them as pending edits);
+# nothing is written to the files here.
+analysis_executor = ThreadPoolExecutor(max_workers=1)  # CPU-heavy: one at a time
+analyses = {}  # path -> {"status": queued|running|done|error, "bpm", "key", "error"}
+analyses_lock = threading.Lock()
+
+
+def _run_analysis(rel):
+    with analyses_lock:
+        analyses[rel]["status"] = "running"
+    try:
+        _, path = _safe_file(rel)
+        result = analysis.analyze(path)
+        outcome = {"status": "done", **result}
+    except Exception as e:
+        reason = "File not found." if getattr(e, "code", None) == 404 else (str(e) or "Analysis failed.")
+        outcome = {"status": "error", "error": reason}
+    with analyses_lock:
+        analyses[rel] = outcome
+
+
+@app.post("/api/analyze")
+def start_analysis():
+    """Body: {"paths": ["rel/path.wav", ...]}"""
+    data = request.get_json(silent=True) or {}
+    for rel in [str(p) for p in data.get("paths", [])][:MAX_FILES]:
+        with analyses_lock:
+            if analyses.get(rel, {}).get("status") in ("queued", "running"):
+                continue
+            analyses[rel] = {"status": "queued"}
+        analysis_executor.submit(_run_analysis, rel)
+    return "", 202
+
+
+@app.get("/api/analyze")
+def get_analysis():
+    """Current state of every analysis. Finished ones are returned once and then forgotten."""
+    with analyses_lock:
+        snapshot = {rel: dict(state) for rel, state in analyses.items()}
+        for rel, state in snapshot.items():
+            if state["status"] in ("done", "error"):
+                del analyses[rel]
+    return jsonify(snapshot)
+
+
+def run(host="127.0.0.1", port=8000):
+    print(f"Saving to {config.get_download_dir()}")
+    print(f"BeatThief running at http://{host}:{port}")
+    app.run(host=host, port=port, threaded=True)
