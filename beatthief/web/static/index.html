@@ -300,7 +300,7 @@
   td { padding: 4px 6px; border-bottom: 1px solid var(--border-muted); vertical-align: middle; }
   tr:last-child td { border-bottom: 0; }
   tbody tr:hover { background: var(--bg-subtle); }
-  td.cover-cell { width: 52px; padding-left: 12px; }
+  td.cover-cell { width: 52px; padding-left: 12px; user-select: none; }
   .cover {
     width: 36px; height: 36px; border-radius: 4px; background: var(--bg-subtle); border: 1px solid var(--border-muted);
     display: grid; place-items: center; color: var(--fg-muted); overflow: hidden;
@@ -1048,7 +1048,7 @@ const COLS = [
   { id: "bpm", label: "BPM", sort: "bpm", filter: true, width: 72, min: 64, field: true, mono: true },
   { id: "key", label: "Key", sort: "key", filter: true, width: 68, min: 60, field: true, mono: true },
   { id: "comment", flex: true, label: "Comment", sort: "comment", width: 116, min: 60, field: true },
-  { id: "duration", label: "Time", name: "Duration", sort: "duration", filter: true, width: 70, min: 62 },
+  { id: "duration", label: "Duration", name: "Duration", sort: "duration", filter: true, width: 70, min: 62 },
   { id: "modified", label: "Added", name: "Date added", sort: "modified", filter: true, width: 104, min: 90 },
   { id: "actions", fixed: "end", width: 142, label: "" },
 ];
@@ -1082,7 +1082,7 @@ function cellHtml(c, f, input) {
     case "cover": {
       const cover = f.has_cover
         ? `<img loading="lazy" alt="" src="/api/cover/${urlPath(f.path)}?v=${f.modified}" onerror="this.remove()">` : ICON_NOTE;
-      return `<td class="cover-cell"><div class="cover">${cover}</div></td>`;
+      return `<td class="cover-cell" data-cover-path="${esc(f.path)}" title="Double-click to play"><div class="cover">${cover}</div></td>`;
     }
     case "title": return `<td>${input("title")}<div class="fname" title="${esc(f.path)}">${esc(f.path)}</div></td>`;
     case "duration": return `<td class="num">${fmtDuration(f.duration)}</td>`;
@@ -1513,6 +1513,12 @@ $("#tags-body").addEventListener("input", (e) => {
 });
 
 // Enter jumps to the same column in the next row, like a spreadsheet.
+// Double-click on a track's cover plays it (same as the play button; on the track that is playing it pauses/resumes).
+$("#tags-body").addEventListener("dblclick", (e) => {
+  const cell = e.target.closest("td[data-cover-path]");
+  if (cell) playFile(cell.dataset.coverPath);
+});
+
 $("#tags-body").addEventListener("keydown", (e) => {
   if (e.key !== "Enter" || !e.target.matches("input.cell")) return;
   const next = e.target.closest("tr").nextElementSibling;
