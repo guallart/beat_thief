@@ -1,11 +1,45 @@
 """Command line entry point:  python -m beatthief {web,download} ..."""
 import argparse
+import os
+import subprocess
 import sys
 
+from . import updater
 from .downloader import FORMATS, download_audio
 
 
+def _wait(proc):
+    """Wait for the child. Ctrl+C reaches the child too, so after one we just give it a moment to exit."""
+    interrupted = False
+    while True:
+        try:
+            return proc.wait(timeout=5 if interrupted else None), interrupted
+        except KeyboardInterrupt:
+            interrupted = True
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            return proc.wait(), interrupted
+
+
+def supervise(argv) -> int:
+    """Run the web interface as a child process and start it again when it asks for a restart
+    (after an update). The supervisor itself only uses the standard library, so it can reinstall
+    the requirements while the app is stopped."""
+    env = {**os.environ, "BEATTHIEF_SUPERVISED": "1"}
+    while True:
+        proc = subprocess.Popen([sys.executable, "-m", "beatthief", *argv], cwd=updater.ROOT, env=env)
+        code, interrupted = _wait(proc)
+        if interrupted or code not in (updater.RESTART, updater.RESTART_AND_INSTALL):
+            return code if code >= 0 else 1
+        if code == updater.RESTART_AND_INSTALL:
+            print("\nBeatThief was updated: installing the new requirements...", flush=True)
+            if not updater.install_requirements():
+                print("Could not install every requirement; starting anyway.", flush=True)
+        print("Restarting BeatThief...\n", flush=True)
+
+
 def main(argv=None) -> int:
+    argv = sys.argv[1:] if argv is None else list(argv)
     parser = argparse.ArgumentParser(prog="beatthief", description="Download and tag audio from YouTube and SoundCloud.")
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -22,6 +56,8 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "web":
+        if not updater.supervised():
+            return supervise(argv)
         from .web.app import run
         run(args.host, args.port)
         return 0

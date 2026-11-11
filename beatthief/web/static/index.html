@@ -302,6 +302,33 @@
     .toolbar .text-input { width: 100%; }
   }
 
+  /* Update notice */
+  .update-pill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; margin-right: 8px; border: 1px solid var(--accent);
+    border-radius: 2em; background: var(--accent-bg); color: var(--accent); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .update-pill:hover { background: var(--bg); }
+  .update-pill[hidden] { display: none; }
+  .modal { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px; background: rgba(0,0,0,.45); }
+  .modal[hidden] { display: none; }
+  .modal-card { width: 100%; max-width: 560px; max-height: 85vh; display: flex; flex-direction: column; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 16px 48px rgba(0,0,0,.35); }
+  .modal-card h2 { margin: 0; padding: 16px 20px 4px; font-size: 16px; }
+  .modal-card .hint { padding: 0 20px 10px; }
+  .commit-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; border-top: 1px solid var(--border-muted); border-bottom: 1px solid var(--border-muted); }
+  .commit-list li { display: flex; gap: 10px; align-items: baseline; padding: 7px 20px; border-top: 1px solid var(--border-muted); }
+  .commit-list li:first-child { border-top: 0; }
+  .commit-list code { flex: none; font: 12px var(--mono); color: var(--fg-muted); }
+  .commit-list .subject { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .commit-list .meta { flex: none; font-size: 12px; color: var(--fg-muted); }
+  .modal-warn { margin: 10px 20px 0; padding: 8px 10px; border-radius: 6px; background: var(--attention-bg); color: var(--attention); font-size: 12px; white-space: pre-wrap; }
+  .modal-warn.error { background: var(--danger-bg); color: var(--danger); }
+  .modal-warn[hidden] { display: none; }
+  .modal-status { padding: 22px 20px; display: flex; gap: 12px; align-items: center; white-space: pre-wrap; }
+  .spinner { flex: none; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px; }
+  .footer-link { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; }
+  .footer-link:hover { text-decoration: underline; }
+
   /* Preview player */
   .player { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--bg-subtle); border-top: 1px solid var(--border); }
   .player-inner { max-width: 1200px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 12px; }
@@ -357,6 +384,7 @@
       BeatThief
     </div>
     <span class="spacer"></span>
+    <button class="update-pill" id="update-pill" hidden title="New commits are available">&uarr; <span id="update-pill-text"></span></button>
     <button class="icon-btn" id="theme" title="Toggle theme" aria-label="Toggle theme">
       <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 12a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-1.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM8 0a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V.75A.75.75 0 0 1 8 0Zm0 13a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 8 13ZM2.34 2.34a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 0 1-1.06 1.06L2.34 3.4a.75.75 0 0 1 0-1.06Zm9.2 9.2a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06ZM0 8a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5H.75A.75.75 0 0 1 0 8Zm13 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 13 8ZM2.34 13.66a.75.75 0 0 1 0-1.06l1.06-1.06a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0Zm9.2-9.2a.75.75 0 0 1 0-1.06l1.06-1.06a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0Z"/></svg>
     </button>
@@ -556,7 +584,22 @@
   <span>Files are saved in <code id="footer-dir">&hellip;</code></span>
   <span>Rate limit: <code id="footer-limit">&hellip;</code> per platform</span>
   <span>Served locally &middot; <code>127.0.0.1</code></span>
+  <span><button class="footer-link" id="check-updates">Check for updates</button></span>
 </footer>
+
+<div class="modal" id="update-modal" hidden role="dialog" aria-modal="true" aria-labelledby="upd-title">
+  <div class="modal-card">
+    <h2 id="upd-title">Update available</h2>
+    <div class="hint" id="upd-sub"></div>
+    <ul class="commit-list" id="upd-commits"></ul>
+    <div class="modal-warn" id="upd-warn" hidden></div>
+    <div class="modal-status" id="upd-status" hidden><span class="spinner" id="upd-spinner"></span><span id="upd-status-text"></span></div>
+    <div class="modal-actions">
+      <button class="btn" id="upd-later">Not now</button>
+      <button class="btn primary" id="upd-go">Update and restart</button>
+    </div>
+  </div>
+</div>
 
 <script>
 const $ = (s) => document.querySelector(s);
@@ -1595,6 +1638,116 @@ refreshJobs();
 setInterval(refreshJobs, 1000);
 showTab(location.hash.slice(1), false);
 fetch("/api/files").then((r) => r.json()).then((f) => { $("#tab-count").textContent = f.length; }).catch(() => {});
+/* ---------------------------------------------------------------- Updates (git remote)
+   The server fetches the remote when it starts. If there are new commits we list their messages
+   and, on request, it pulls and restarts itself (see beatthief/updater.py). */
+const upd = { info: null, boot: null };
+const UPD_KEY = "beatthief.update.dismissed";
+const updDismissed = () => { try { return sessionStorage.getItem(UPD_KEY); } catch { return null; } };
+const fetchUpdate = () => fetch("/api/update").then((r) => r.json());
+const updModal = $("#update-modal");
+
+async function checkUpdates(manual = false, tries = 0) {
+  const link = $("#check-updates");
+  let d;
+  try { d = await fetchUpdate(); } catch { if (manual) link.textContent = "Couldn't check"; return; }
+  upd.boot ??= d.boot;
+  if (d.state === "checking" && tries < 40) {              // the fetch runs in the background on the server
+    if (manual) link.textContent = "Checking…";
+    return setTimeout(() => checkUpdates(manual, tries + 1), 1500);
+  }
+  upd.info = d;
+  const available = d.state === "available";
+  $("#update-pill").hidden = !available;
+  if (available) $("#update-pill-text").textContent = `${d.behind} update${d.behind === 1 ? "" : "s"}`;
+  if (manual) {
+    link.textContent = available ? "Update available" : d.state === "uptodate" ? "Up to date ✓" : d.state === "error" ? "Couldn't check" : "Not available here";
+    setTimeout(() => (link.textContent = "Check for updates"), 4000);
+  }
+  if (available && (manual || updDismissed() !== d.latest)) openUpdateModal();
+}
+
+function openUpdateModal() {
+  const d = upd.info;
+  if (!d || d.state !== "available") return;
+  $("#upd-title").textContent = "Update available";
+  $("#upd-sub").hidden = false;
+  $("#upd-sub").textContent = `${d.behind} new commit${d.behind === 1 ? "" : "s"} since your version. This is what changed:`;
+  const shown = d.commits.map((c) => `<li><code>${esc(c.hash)}</code><span class="subject">${esc(c.subject)}</span><span class="meta">${esc(c.author)} · ${esc(c.date)}</span></li>`);
+  if (d.behind > d.commits.length) shown.push(`<li><span class="subject meta">…and ${d.behind - d.commits.length} older commits</span></li>`);
+  $("#upd-commits").innerHTML = shown.join("");
+  $("#upd-commits").hidden = false;
+  $("#upd-status").hidden = true;
+  $("#upd-later").hidden = false;
+  $("#upd-later").textContent = "Not now";
+  $("#upd-go").hidden = false;
+  const warn = [];
+  let blocked = false;
+  if (d.ahead) { warn.push("This copy has commits that aren't on the remote, so it can't be updated automatically. Update it with git."); blocked = true; }
+  if (d.busy) warn.push(`${d.busy} download${d.busy === 1 ? " is" : "s are"} in progress and will be interrupted.`);
+  if (countEdits()) warn.push("You have unsaved tag changes in the Library; they will be lost.");
+  if (d.dirty) warn.push("You have local modifications to tracked files; the update fails if they clash with the new version.");
+  if (!d.can_restart) warn.push("BeatThief wasn't started with python -m beatthief web, so you'll have to start it again yourself afterwards.");
+  const w = $("#upd-warn");
+  w.hidden = !warn.length;
+  w.textContent = warn.join("\n");
+  w.classList.toggle("error", blocked);
+  $("#upd-go").disabled = blocked;
+  updModal.hidden = false;
+  $("#upd-go").focus();
+}
+function closeUpdateModal() {
+  if (upd.applying) return;
+  updModal.hidden = true;
+  try { sessionStorage.setItem(UPD_KEY, upd.info?.latest || ""); } catch {}
+}
+
+function showUpdateProgress(text, { spinner = true, close = false, title = "Updating BeatThief" } = {}) {
+  $("#upd-title").textContent = title;
+  $("#upd-sub").hidden = true;
+  $("#upd-commits").hidden = true;
+  $("#upd-warn").hidden = true;
+  $("#upd-go").hidden = true;
+  $("#upd-status").hidden = false;
+  $("#upd-spinner").hidden = !spinner;
+  $("#upd-status-text").textContent = text;
+  $("#upd-later").hidden = !close;
+  $("#upd-later").textContent = "Close";
+}
+
+async function applyUpdate() {
+  upd.applying = true;
+  showUpdateProgress("Downloading the update…");
+  const res = await fetch("/api/update/apply", { method: "POST" }).catch(() => null);
+  if (!res || !res.ok) {
+    upd.applying = false;
+    return showUpdateProgress((res && (await res.json().catch(() => ({}))).error) || "Could not start the update.", { spinner: false, close: true, title: "Update failed" });
+  }
+  const started = Date.now();
+  let lastMessage = "Downloading the update…";
+  const poll = async () => {
+    try {
+      const d = await fetchUpdate();
+      if (d.boot !== upd.boot) { state.edits.clear(); return location.reload(); }   // the new process is up
+      if (d.state === "failed") { upd.applying = false; return showUpdateProgress(d.message, { spinner: false, close: true, title: "Update failed" }); }
+      if (d.state === "updated") { upd.applying = false; return showUpdateProgress(d.message, { spinner: false, close: true, title: "Updated" }); }
+      lastMessage = d.message || lastMessage;
+      showUpdateProgress(lastMessage);
+    } catch {                                              // the server is down: it is restarting
+      showUpdateProgress("Restarting BeatThief…\nThis can take a minute if new requirements are being installed.");
+    }
+    if (Date.now() - started > 300000) { upd.applying = false; return showUpdateProgress("BeatThief didn't come back. Start it again from the terminal.", { spinner: false, close: true, title: "Update failed" }); }
+    setTimeout(poll, 1000);
+  };
+  poll();
+}
+
+$("#upd-go").onclick = applyUpdate;
+$("#upd-later").onclick = closeUpdateModal;
+$("#update-pill").onclick = openUpdateModal;
+$("#check-updates").onclick = async () => { $("#check-updates").textContent = "Checking…"; await fetch("/api/update/check", { method: "POST" }).catch(() => {}); checkUpdates(true); };
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !updModal.hidden) closeUpdateModal(); });
+checkUpdates();
 </script>
 </body>
 </html>

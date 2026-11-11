@@ -127,6 +127,14 @@ python -m beatthief download "https://www.youtube.com/playlist?list=..." --playl
 
 The formats are `wav` (the default), `flac`, `mp3` and `m4a`.
 
+## Updates
+
+If you cloned the repository, BeatThief tells you when there is something new. When the web interface starts it checks the git remote in the background; if there are new commits, a dialog lists their messages and asks whether to update. **Update and restart** runs `git pull --ff-only` (it never merges or overwrites your local changes: if they clash, it stops and shows git's message) and then restarts BeatThief by itself, installing the new requirements first when `requirements.txt` changed. **Not now** closes the dialog, and a small "N updates" button stays in the header in case you change your mind. The *Check for updates* link in the footer looks again without restarting.
+
+It works the same on Linux and Windows and needs the `git` command, which you already have if you cloned the repo. Starting the web interface with `python -m beatthief web` (or the `run.sh` / `run.bat` launchers) runs it under a small supervisor process, which is what makes the automatic restart possible. If the update would interrupt downloads in progress or unsaved tag edits, the dialog warns you first. To switch the check off, set the environment variable `BEATTHIEF_NO_UPDATE_CHECK=1`.
+
+If you also commit to your copy, an update can't be applied automatically (git can't fast-forward): the dialog says so and you update with git yourself.
+
 ## Good to know
 
 - WAV, FLAC and the like are lossless containers, but YouTube and SoundCloud serve compressed audio. Converting to WAV doesn't bring back any quality, it just stores what was there without compressing it again. If sound quality matters, buy the track.

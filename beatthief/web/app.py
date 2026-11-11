@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from flask import Flask, Response, abort, jsonify, request, send_from_directory
 
-from .. import analysis, config, downloader, tagging, throttle, waveform
+from .. import analysis, config, downloader, tagging, throttle, updater, waveform
 from ..sources import validate_and_clean_url
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -317,7 +317,28 @@ def get_analysis():
     return jsonify(snapshot)
 
 
+# Updates from the git remote (see updater.py). The check starts with the server; the UI polls this.
+@app.get("/api/update")
+def update_status():
+    with jobs_lock:
+        busy = sum(1 for j in jobs.values() if j["status"] in ("queued", "downloading", "cooldown"))
+    return jsonify({**updater.get_state(), "boot": updater.BOOT_ID, "busy": busy, "can_restart": updater.supervised()})
+
+
+@app.post("/api/update/check")
+def update_check():
+    updater.start_check()
+    return "", 202
+
+
+@app.post("/api/update/apply")
+def update_apply():
+    ok, error = updater.start_apply()
+    return ("", 202) if ok else (jsonify({"error": error}), 409)
+
+
 def run(host="127.0.0.1", port=8000):
     print(f"Saving to {config.get_download_dir()}")
     print(f"BeatThief running at http://{host}:{port}")
+    updater.start_check()
     app.run(host=host, port=port, threaded=True)
