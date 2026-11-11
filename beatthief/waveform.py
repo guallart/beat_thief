@@ -10,7 +10,8 @@ import subprocess
 SAMPLE_RATE = 22050            # plenty for a visual overview, and half the work of 44.1 kHz
 BINS = 1000                    # horizontal resolution of the overview
 MAX_SECONDS = 30 * 60          # don't decode more than this (long DJ mixes)
-BANDS = (("low", 0, 150), ("mid", 150, 2500), ("high", 2500, SAMPLE_RATE / 2))
+# Same crossovers as the player's equalizer (EQ_XOVER in index.html), so what you see is what each knob moves.
+BANDS = (("low", 0, 250), ("mid", 250, 3000), ("high", 3000, SAMPLE_RATE / 2))
 
 
 def _decode(path: str):

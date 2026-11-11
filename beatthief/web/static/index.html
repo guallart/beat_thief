@@ -362,6 +362,8 @@
   .knob .k-tick { stroke: var(--c); stroke-width: 2; stroke-linecap: round; }
   .knob:hover .k-body, .knob:focus-visible .k-body, .knob.on .k-body { stroke: var(--c); }
   .knob:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+  .knob.killed .k-tick { stroke: var(--fg-muted); }
+  .knob.killed .k-label { text-decoration: line-through; }
   .knob .k-label { margin-top: -1px; font: 700 9px/1 var(--sans); letter-spacing: .04em; color: var(--c); }
   body.knob-dragging, body.knob-dragging * { cursor: ns-resize !important; user-select: none; }
   @media (max-width: 700px) { .eq { display: none; } }
@@ -1725,33 +1727,54 @@ const updateRemaining = () => { $("#p-remaining").style.left = `${seek.value / 1
 new ResizeObserver(drawWave).observe(waveCanvas);
 
 /* ---------------------------------------------------------------- Equalizer
-   Three knobs (low / mid / high), drawn in the same colours as the waveform. Drag a knob up or down
-   to change its gain (Shift = fine), mouse wheel or arrow keys work too, double-click resets it.
-   The <audio> element feeds a Web Audio chain: low shelf (< 150 Hz) -> mid peak (150 Hz to 2.5 kHz)
-   -> high shelf (> 2.5 kHz), the same bands the waveform shows. */
+   A DJ-style "isolator": three knobs (low / mid / high), in the colours of the waveform.
+   The sound is split into three bands with Linkwitz-Riley crossovers (two cascaded Butterworth
+   filters each) at 250 Hz and 3 kHz, every band gets its own gain, and the three are summed again.
+   With the knobs at 12 o'clock the sum is flat (the crossovers add up to an all-pass), and each knob
+   only touches its own band, so turning one down doesn't dull the others. The bottom of a knob is a
+   full kill (silence), the top is +6 dB.
+   Drag a knob up or down (Shift = fine); the mouse wheel and arrow keys work too, double-click resets. */
 const EQ_BANDS = [
-  { name: "LOW", title: "Low (bass)", color: WAVE_COLORS[0] },
-  { name: "MID", title: "Mid (vocals, leads)", color: WAVE_COLORS[1] },
-  { name: "HIGH", title: "High (hats)", color: WAVE_COLORS[2] },
+  { name: "LOW", title: "Low (kick and bass, below 250 Hz)", color: WAVE_COLORS[0] },
+  { name: "MID", title: "Mid (vocals, leads, 250 Hz to 3 kHz)", color: WAVE_COLORS[1] },
+  { name: "HIGH", title: "High (hats, above 3 kHz)", color: WAVE_COLORS[2] },
 ];
-const EQ_RANGE = 12;                                       // dB either way
-const EQ_KEY = "beatthief.eq.v1";
-const eq = { gains: [0, 0, 0], ctx: null, nodes: null, failed: false };
+const EQ_XOVER = [250, 3000];                              // Hz: low | mid | high
+const EQ_MAX_DB = 6, EQ_MIN_DB = -26;                      // knob top = +6 dB; just above the bottom = -26 dB; the very bottom = kill
+const EQ_KEY = "beatthief.eq.v2";                          // positions, -1 (kill) .. 0 (flat) .. +1 (+6 dB)
+const eq = { pos: [0, 0, 0], ctx: null, nodes: null, failed: false };
 try {
   const saved = JSON.parse(localStorage.getItem(EQ_KEY) || "null");
-  if (Array.isArray(saved) && saved.length === 3) eq.gains = saved.map((v) => Math.max(-EQ_RANGE, Math.min(EQ_RANGE, Number(v) || 0)));
+  if (Array.isArray(saved) && saved.length === 3) eq.pos = saved.map((v) => Math.max(-1, Math.min(1, Number(v) || 0)));
 } catch {}
+
+const dbOf = (p) => (p >= 0 ? p * EQ_MAX_DB : p <= -0.97 ? -Infinity : p * -EQ_MIN_DB);   // -Infinity = kill
+const posOf = (db) => (db >= 0 ? db / EQ_MAX_DB : db / -EQ_MIN_DB);
+const fmtPos = (p) => { const db = dbOf(p); return db === -Infinity ? "KILL" : `${db > 0 ? "+" : ""}${db.toFixed(1)} dB`; };
 
 function setupEQ() {
   if (eq.ctx || eq.failed) return;
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     const src = ctx.createMediaElementSource(audio);
-    const filter = (type, freq, q) => { const n = ctx.createBiquadFilter(); n.type = type; n.frequency.value = freq; if (q) n.Q.value = q; return n; };
-    const low = filter("lowshelf", 150), mid = filter("peaking", 610, 0.3), high = filter("highshelf", 2500), out = ctx.createGain();
-    src.connect(low); low.connect(mid); mid.connect(high); high.connect(out); out.connect(ctx.destination);
+    // For low/high-pass biquads Web Audio takes Q in dB: -3.01 dB is the Butterworth value (1/sqrt 2).
+    const biquad = (type, f) => { const n = ctx.createBiquadFilter(); n.type = type; n.frequency.value = f; n.Q.value = -3.0103; return n; };
+    const pair = (type, f) => { const a = biquad(type, f), b = biquad(type, f); a.connect(b); return [a, b]; };   // 2 x Butterworth = Linkwitz-Riley 4th order
+    const [f1, f2] = EQ_XOVER;
+    const lp2 = pair("lowpass", f2), hp2 = pair("highpass", f2);          // split at 3 kHz
+    const lp1 = pair("lowpass", f1), hp1 = pair("highpass", f1);          // split the lower part at 250 Hz
+    const lp1c = pair("lowpass", f1), hp1c = pair("highpass", f1);        // same 250 Hz crossover on the highs, only to keep the phase aligned
+    const gains = [ctx.createGain(), ctx.createGain(), ctx.createGain()], out = ctx.createGain();
+    src.connect(lp2[0]); src.connect(hp2[0]);
+    lp2[1].connect(lp1[0]); lp2[1].connect(hp1[0]);
+    lp1[1].connect(gains[0]);                                             // low
+    hp1[1].connect(gains[1]);                                             // mid
+    hp2[1].connect(lp1c[0]); hp2[1].connect(hp1c[0]);
+    lp1c[1].connect(gains[2]); hp1c[1].connect(gains[2]);                 // high (lp + hp of the same crossover = all-pass)
+    gains.forEach((g) => g.connect(out));
+    out.connect(ctx.destination);
     eq.ctx = ctx;
-    eq.nodes = { low, mid, high, out };
+    eq.nodes = { gains, out, filters: { lp2, hp2, lp1, hp1, lp1c, hp1c } };
     applyEQ(true);
   } catch {
     eq.failed = true;                                      // no Web Audio: the player works, the knobs just do nothing
@@ -1762,9 +1785,10 @@ function applyEQ(immediately) {
   if (!eq.nodes) return;
   const t = eq.ctx.currentTime;
   const set = (param, v) => (immediately ? (param.value = v) : param.setTargetAtTime(v, t, 0.02));   // glide: no clicks
-  ["low", "mid", "high"].forEach((k, i) => set(eq.nodes[k].gain, eq.gains[i]));
+  const dbs = eq.pos.map(dbOf);
+  dbs.forEach((db, i) => set(eq.nodes.gains[i].gain, db === -Infinity ? 0 : Math.pow(10, db / 20)));
   // Mastered tracks peak near 0 dBFS, so any boost would clip: lower the output by the biggest boost.
-  set(eq.nodes.out.gain, Math.pow(10, -Math.max(0, ...eq.gains) / 20));
+  set(eq.nodes.out.gain, Math.pow(10, -Math.max(0, ...dbs) / 20));
 }
 audio.addEventListener("play", () => { setupEQ(); eq.ctx?.resume?.(); });
 
@@ -1775,32 +1799,39 @@ const knobArc = (a0, a1, r) => {
   const [x0, y0] = knobPoint(a0, r), [x1, y1] = knobPoint(a1, r);
   return `M${x0.toFixed(2)} ${y0.toFixed(2)} A${r} ${r} 0 ${Math.abs(a1 - a0) > 180 ? 1 : 0} ${a1 > a0 ? 1 : 0} ${x1.toFixed(2)} ${y1.toFixed(2)}`;
 };
-const fmtDb = (v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`;
 
 eqEl.innerHTML = EQ_BANDS.map((b, i) => `
-  <div class="knob" role="slider" tabindex="0" data-i="${i}" aria-label="${b.title} gain" aria-valuemin="${-EQ_RANGE}" aria-valuemax="${EQ_RANGE}" style="--c:${b.color}">
+  <div class="knob" role="slider" tabindex="0" data-i="${i}" aria-label="${b.title} gain" aria-valuemin="${EQ_MIN_DB}" aria-valuemax="${EQ_MAX_DB}" style="--c:${b.color}">
     <svg viewBox="0 0 32 32" aria-hidden="true"><path class="k-track" d="${knobArc(-135, 135, 12)}"/><path class="k-val" d=""/><circle class="k-body" cx="16" cy="16" r="8.5"/><line class="k-tick" x1="16" y1="16" x2="16" y2="9"/></svg>
     <span class="k-label">${b.name}</span>
   </div>`).join("");
 const knobs = [...eqEl.children];
 
 function drawKnob(i) {
-  const v = eq.gains[i], angle = (v / EQ_RANGE) * 135, k = knobs[i];
+  const p = eq.pos[i], angle = p * 135, k = knobs[i];
   k.querySelector(".k-val").setAttribute("d", Math.abs(angle) < 0.5 ? "" : knobArc(0, angle, 12));
   k.querySelector(".k-tick").setAttribute("transform", `rotate(${angle} 16 16)`);
-  k.setAttribute("aria-valuenow", v);
-  k.setAttribute("aria-valuetext", fmtDb(v));
-  k.title = `${EQ_BANDS[i].title}: ${fmtDb(v)}\nDrag up or down · Shift for fine · double-click to reset`;
-  k.querySelector(".k-label").textContent = k.classList.contains("on") ? fmtDb(v).replace(" dB", "") : EQ_BANDS[i].name;
+  const db = dbOf(p);
+  k.setAttribute("aria-valuenow", db === -Infinity ? EQ_MIN_DB : db.toFixed(1));
+  k.setAttribute("aria-valuetext", fmtPos(p));
+  k.title = `${EQ_BANDS[i].title}: ${fmtPos(p)}\nDrag up or down · Shift for fine · double-click to reset`;
+  k.querySelector(".k-label").textContent = k.classList.contains("on") ? fmtPos(p).replace(" dB", "") : EQ_BANDS[i].name;
+  k.classList.toggle("killed", db === -Infinity);
 }
-function setGain(i, v) {
-  v = Math.max(-EQ_RANGE, Math.min(EQ_RANGE, Math.round(v * 10) / 10));
-  if (Math.abs(v) < 0.6) v = 0;                            // small detent at 0 dB (flat)
-  if (v === eq.gains[i]) return;
-  eq.gains[i] = v;
+function setPos(i, p) {
+  p = Math.max(-1, Math.min(1, Math.round(p * 1000) / 1000));
+  if (Math.abs(p) < 0.03) p = 0;                           // small detent at flat
+  if (p <= -0.97) p = -1;                                  // bottom of the knob = kill
+  if (p === eq.pos[i]) return;
+  eq.pos[i] = p;
   drawKnob(i);
   applyEQ(false);
-  try { localStorage.setItem(EQ_KEY, JSON.stringify(eq.gains)); } catch {}
+  try { localStorage.setItem(EQ_KEY, JSON.stringify(eq.pos)); } catch {}
+}
+// Keyboard and wheel move in dB steps, which is how people think about it.
+function stepDb(i, delta) {
+  const db = dbOf(eq.pos[i]);
+  setPos(i, posOf(Math.max(EQ_MIN_DB, Math.min(EQ_MAX_DB, (db === -Infinity ? EQ_MIN_DB : db) + delta))));
 }
 knobs.forEach((_, i) => drawKnob(i));
 
@@ -1809,10 +1840,10 @@ eqEl.addEventListener("pointerdown", (e) => {
   if (!knob || e.button) return;
   e.preventDefault();
   knob.focus();
-  const i = +knob.dataset.i, startY = e.clientY, startV = eq.gains[i];
+  const i = +knob.dataset.i, startY = e.clientY, startP = eq.pos[i];
   try { knob.setPointerCapture(e.pointerId); } catch {}
   document.body.classList.add("knob-dragging");
-  const move = (ev) => setGain(i, startV + (startY - ev.clientY) * (ev.shiftKey ? 0.075 : 0.3));   // 80 px = the full 24 dB
+  const move = (ev) => setPos(i, startP + (startY - ev.clientY) * (ev.shiftKey ? 0.00625 : 0.025));   // 80 px = from kill to +6 dB
   const stop = () => {
     knob.removeEventListener("pointermove", move);
     knob.removeEventListener("pointerup", stop);
@@ -1823,20 +1854,20 @@ eqEl.addEventListener("pointerdown", (e) => {
   knob.addEventListener("pointerup", stop);
   knob.addEventListener("pointercancel", stop);
 });
-eqEl.addEventListener("dblclick", (e) => { const k = e.target.closest(".knob"); if (k) setGain(+k.dataset.i, 0); });
+eqEl.addEventListener("dblclick", (e) => { const k = e.target.closest(".knob"); if (k) setPos(+k.dataset.i, 0); });
 eqEl.addEventListener("wheel", (e) => {
   const k = e.target.closest(".knob");
   if (!k) return;
   e.preventDefault();
-  const i = +k.dataset.i;
-  setGain(i, eq.gains[i] + (e.deltaY < 0 ? 1 : -1));
+  stepDb(+k.dataset.i, e.deltaY < 0 ? 1 : -1);
 }, { passive: false });
 eqEl.addEventListener("keydown", (e) => {
   const k = e.target.closest(".knob");
   if (!k) return;
   const i = +k.dataset.i, step = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 3, PageDown: -3 }[e.key];
-  if (step) { e.preventDefault(); setGain(i, eq.gains[i] + step); }
-  else if (e.key === "Home" || e.key === "0") { e.preventDefault(); setGain(i, 0); }
+  if (step) { e.preventDefault(); stepDb(i, step); }
+  else if (e.key === "Home" || e.key === "0") { e.preventDefault(); setPos(i, 0); }
+  else if (e.key === "End") { e.preventDefault(); setPos(i, -1); }                // kill
 });
 // While a knob is focused or dragged its label shows the value instead of LOW / MID / HIGH.
 eqEl.addEventListener("focusin", (e) => { const k = e.target.closest(".knob"); if (k) { k.classList.add("on"); drawKnob(+k.dataset.i); } });
