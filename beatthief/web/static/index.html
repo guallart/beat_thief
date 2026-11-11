@@ -7,6 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%231f6feb'/%3E%3Cpath d='M4 10V6m2.7 5V4m2.6 7V5m2.7 5V7' stroke='white' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
   :root {
+    --page-max: 1280px; --gutter: 12px;
     --bg: #ffffff;
     --bg-subtle: #f6f8fa;
     --border: #d0d7de;
@@ -60,7 +61,7 @@
   /* Header + tabs */
   header { background: var(--bg-subtle); }
   .header-inner {
-    max-width: 1200px; margin: 0 auto; padding: 14px 16px;
+    max-width: var(--page-max); margin: 0 auto; padding: 12px var(--gutter);
     display: flex; align-items: center; gap: 12px;
   }
   .logo { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; }
@@ -76,7 +77,7 @@
   .icon-btn:hover { background: var(--bg); color: var(--fg); }
 
   .tabs-bar { background: var(--bg-subtle); border-bottom: 1px solid var(--border); }
-  .tabs { max-width: 1200px; margin: 0 auto; padding: 0 16px; display: flex; gap: 4px; }
+  .tabs { max-width: var(--page-max); margin: 0 auto; padding: 0 var(--gutter); display: flex; gap: 4px; }
   .tab {
     background: none; border: 0; border-bottom: 2px solid transparent; color: var(--fg);
     font: 14px var(--sans); padding: 8px 12px; cursor: pointer; display: flex; gap: 8px; align-items: center;
@@ -86,14 +87,14 @@
   .tab.active { border-bottom-color: #fd8c73; font-weight: 600; }
   .tab .counter { font-weight: 500; }
 
-  main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
-  .intro { margin: 0 0 20px; color: var(--fg-muted); }
+  main { max-width: var(--page-max); margin: 0 auto; padding: 16px var(--gutter) 40px; }
+  .intro { margin: 0 0 14px; color: var(--fg-muted); }
   .intro code { font-family: var(--mono); font-size: 12.5px; }
 
   /* Box */
   .box {
     border: 1px solid var(--border); border-radius: 6px; background: var(--bg);
-    box-shadow: var(--shadow); margin-bottom: 24px; overflow: hidden;
+    box-shadow: var(--shadow); margin-bottom: 16px; overflow: hidden;
   }
   .box-header {
     display: flex; align-items: center; gap: 8px; padding: 10px 16px; flex-wrap: wrap;
@@ -291,7 +292,7 @@
   .more { padding: 12px 16px; text-align: center; border-top: 1px solid var(--border-muted); }
 
   footer {
-    max-width: 1200px; margin: 0 auto; padding: 16px; border-top: 1px solid var(--border-muted);
+    width: calc(100% - 2 * var(--gutter)); max-width: calc(var(--page-max) - 2 * var(--gutter)); margin: 0 auto; padding: 12px 0; border-top: 1px solid var(--border-muted);
     color: var(--fg-muted); font-size: 12px; display: flex; gap: 16px; flex-wrap: wrap;
   }
   footer code { font-family: var(--mono); }
@@ -331,7 +332,7 @@
 
   /* Preview player */
   .player { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--bg-subtle); border-top: 1px solid var(--border); }
-  .player-inner { max-width: 1200px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 12px; }
+  .player-inner { max-width: var(--page-max); margin: 0 auto; padding: 10px var(--gutter); display: flex; align-items: center; gap: 12px; }
   .p-info { width: 260px; min-width: 0; }
   .p-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .p-sub { font-size: 12px; color: var(--danger); }
@@ -930,14 +931,14 @@ const sortValue = (f, key) => {
    remembered in this browser's localStorage. */
 const COLS = [
   { id: "cover", fixed: "start", width: 48, label: "" },
-  { id: "title", label: "Title", sort: "title", width: 160, min: 100, field: true, locked: true },
-  { id: "artist", label: "Artist", sort: "artist", width: 116, min: 60, field: true },
-  { id: "album", label: "Album", sort: "album", width: 104, min: 60, field: true },
+  { id: "title", label: "Title", sort: "title", width: 184, min: 100, field: true, locked: true },
+  { id: "artist", label: "Artist", sort: "artist", width: 122, min: 60, field: true },
+  { id: "album", label: "Album", sort: "album", width: 108, min: 60, field: true },
   { id: "year", label: "Year", sort: "year", filter: true, width: 74, min: 66, field: true, mono: true },
-  { id: "genre", label: "Genre", sort: "genre", filter: true, width: 116, min: 76, field: true },
+  { id: "genre", label: "Genre", sort: "genre", filter: true, width: 122, min: 76, field: true },
   { id: "bpm", label: "BPM", sort: "bpm", filter: true, width: 72, min: 64, field: true, mono: true },
   { id: "key", label: "Key", sort: "key", filter: true, width: 68, min: 60, field: true, mono: true },
-  { id: "comment", label: "Comment", sort: "comment", width: 96, min: 60, field: true },
+  { id: "comment", label: "Comment", sort: "comment", width: 116, min: 60, field: true },
   { id: "duration", label: "Time", name: "Duration", sort: "duration", filter: true, width: 70, min: 62 },
   { id: "modified", label: "Added", name: "Date added", sort: "modified", filter: true, width: 104, min: 90 },
   { id: "actions", fixed: "end", width: 142, label: "" },
@@ -995,7 +996,8 @@ function updateWidths() {
   let total = 0;
   cols.forEach((c, i) => { const w = colWidth(c); els[i].style.width = w + "px"; total += w; });
   $("#page-library table").style.minWidth = total + "px";
-  $(".table-wrap").classList.toggle("scroll", total > $(".table-wrap").parentElement.clientWidth);
+  const room = $(".table-wrap").parentElement.clientWidth;
+  if (room) $(".table-wrap").classList.toggle("scroll", total > room);   // room is 0 while the Library tab is hidden
 }
 
 function renderColumns() {
@@ -1110,6 +1112,7 @@ colsMenu.addEventListener("click", (e) => { if (e.target.id === "cols-reset") { 
 document.addEventListener("click", (e) => { if (!colsMenu.hidden && !e.composedPath().includes(colsMenu) && !e.target.closest("#cols-btn")) toggleColsMenu(false); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !colsMenu.hidden) { toggleColsMenu(false); colsBtn.focus(); } });
 window.addEventListener("resize", updateWidths);
+new ResizeObserver(updateWidths).observe($(".table-wrap").parentElement);   // also fires when the tab becomes visible
 
 loadLayout();
 renderColumns();
