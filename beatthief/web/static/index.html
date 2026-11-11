@@ -117,6 +117,31 @@
     height: 32px; padding: 0 12px; background: var(--bg); color: var(--fg);
     border: 1px solid var(--border); border-radius: 6px; font: 13px var(--sans); min-width: 0;
   }
+  /* Link list input */
+  .link-input { display: block; }
+  .link-input-wrap { position: relative; }
+  .link-input-wrap input { width: 100%; height: 36px; padding: 0 12px; font: 13px var(--mono);
+    background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; }
+  .link-input-wrap input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+  .link-input-wrap input::placeholder { color: var(--fg-muted); }
+  .link-input-wrap.drag input { border-style: dashed; border-color: var(--accent); background: var(--accent-bg); }
+  .link-head { display: none; align-items: center; gap: 8px; margin: 12px 0 6px; font-size: 12px; color: var(--fg-muted); }
+  .link-head strong { color: var(--fg); font-weight: 600; }
+  .link-head .spacer { flex: 1; }
+  .link-head button { background: none; border: 0; color: var(--fg-muted); cursor: pointer; font: inherit; padding: 2px 4px; border-radius: 4px; }
+  .link-head button:hover { color: var(--danger); background: var(--danger-bg); }
+  .link-list { list-style: none; margin: 0; padding: 0; max-height: 232px; overflow-y: auto;
+    border: 1px solid var(--border); border-radius: 6px; display: none; }
+  .link-list li { display: flex; align-items: center; gap: 8px; padding: 5px 6px 5px 10px; font: 12px var(--mono); border-top: 1px solid var(--border-muted); }
+  .link-list li:first-child { border-top: 0; }
+  .link-list .n { color: var(--fg-muted); min-width: 22px; text-align: right; font-size: 11px; }
+  .link-list .u { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .link-list .tag { font: 11px var(--sans); padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; color: var(--fg-muted); }
+  .link-list li.bad { background: var(--danger-bg); }
+  .link-list li.bad .u, .link-list li.bad .tag { color: var(--danger); }
+  .link-list li.bad .tag { border-color: var(--danger); }
+  .link-list .x { background: none; border: 0; color: var(--fg-muted); cursor: pointer; font-size: 16px; line-height: 1; width: 22px; height: 22px; border-radius: 4px; }
+  .link-list .x:hover { color: var(--danger); background: var(--danger-bg); }
   .form-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
   .hint { color: var(--fg-muted); font-size: 12px; }
   kbd {
@@ -293,13 +318,23 @@
 
 <!-- ================= Download ================= -->
 <main id="page-download">
-  <p class="intro">Download audio from YouTube and SoundCloud as WAV, FLAC, MP3 or M4A, tagged automatically with title, artist, year, genre and cover art. Paste one or more links, one per line.</p>
+  <p class="intro">Download audio from YouTube and SoundCloud as WAV, FLAC, MP3 or M4A, tagged automatically with title, artist, year, genre and cover art. Paste one or many links, separated by lines, spaces or commas.</p>
 
   <section class="box">
     <div class="box-header">New download</div>
     <div class="box-body">
-      <textarea id="urls" spellcheck="false" autofocus
-        placeholder="https://www.youtube.com/watch?v=...&#10;https://soundcloud.com/artist/track"></textarea>
+      <div class="link-input">
+        <div class="link-input-wrap" id="link-wrap">
+          <input id="urls" type="text" spellcheck="false" autocomplete="off" autofocus
+            placeholder="Paste links here (one or many) or type one and press Enter">
+        </div>
+        <div class="link-head" id="link-head">
+          <span><strong id="link-count">0</strong> <span id="link-count-label">links</span></span>
+          <span class="spacer"></span>
+          <button type="button" id="link-clear">Clear all</button>
+        </div>
+        <ul class="link-list" id="link-list"></ul>
+      </div>
       <div class="form-error" id="form-error"></div>
       <div class="form-row">
         <button class="btn primary" id="submit">
@@ -536,17 +571,91 @@ function showTab(name, updateHash = true) {
 $$(".tab").forEach((t) => (t.onclick = () => showTab(t.dataset.tab)));
 
 /* ---------------------------------------------------------------- Download page */
+const links = [];           // [{ url, bad }]
+const URL_RE = /^https?:\/\/\S+$/i;
+
+function addLinks(text) {
+  const tokens = text.split(/[\s,;]+/).map((t) => t.trim()).filter(Boolean);
+  let added = 0;
+  for (const t of tokens) {
+    if (links.some((l) => l.url === t)) continue;
+    links.push({ url: t, bad: !URL_RE.test(t) });
+    added++;
+  }
+  if (added) renderLinks();
+  return added;
+}
+
+function linkSource(url) {
+  if (/youtu\.?be/i.test(url)) return "youtube";
+  if (/soundcloud\.com|snd\.sc/i.test(url)) return "soundcloud";
+  return "?";
+}
+
+function renderLinks() {
+  const list = $("#link-list");
+  list.replaceChildren(...links.map((l, i) => {
+    const li = document.createElement("li");
+    if (l.bad) li.className = "bad";
+    const n = document.createElement("span"); n.className = "n"; n.textContent = i + 1;
+    const u = document.createElement("span"); u.className = "u"; u.textContent = l.url; u.title = l.url;
+    const tag = document.createElement("span"); tag.className = "tag"; tag.textContent = l.bad ? "invalid" : linkSource(l.url);
+    const x = document.createElement("button"); x.className = "x"; x.type = "button"; x.title = "Remove"; x.textContent = "×";
+    x.onclick = () => { links.splice(i, 1); renderLinks(); $("#urls").focus(); };
+    li.append(n, u, tag, x);
+    return li;
+  }));
+  const has = links.length > 0;
+  list.style.display = has ? "block" : "none";
+  $("#link-head").style.display = has ? "flex" : "none";
+  $("#link-count").textContent = links.length;
+  $("#link-count-label").textContent = links.length === 1 ? "link" : "links";
+  $("#submit").lastChild.textContent = links.length > 1 ? ` Download ${links.length}` : " Download";
+}
+
+const urlInput = $("#urls");
+urlInput.addEventListener("paste", (e) => {
+  const text = e.clipboardData.getData("text");
+  if (!text) return;
+  e.preventDefault();
+  addLinks(text);
+  list_scroll_end();
+});
+urlInput.addEventListener("input", () => {            // fallback: multi-token text inserted by other means
+  if (/[\s,;]/.test(urlInput.value.trim())) { addLinks(urlInput.value); urlInput.value = ""; list_scroll_end(); }
+});
+urlInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(); }
+  else if (e.key === "Enter") { e.preventDefault(); if (urlInput.value.trim()) { addLinks(urlInput.value); urlInput.value = ""; list_scroll_end(); } else if (links.length) submit(); }
+  else if (e.key === "Backspace" && !urlInput.value && links.length) { links.pop(); renderLinks(); }
+});
+function list_scroll_end() { const l = $("#link-list"); l.scrollTop = l.scrollHeight; }
+$("#link-clear").onclick = () => { links.length = 0; renderLinks(); $("#form-error").style.display = "none"; urlInput.focus(); };
+
+const wrap = $("#link-wrap");
+["dragenter", "dragover"].forEach((ev) => wrap.addEventListener(ev, (e) => { e.preventDefault(); wrap.classList.add("drag"); }));
+["dragleave", "drop"].forEach((ev) => wrap.addEventListener(ev, () => wrap.classList.remove("drag")));
+wrap.addEventListener("drop", (e) => { e.preventDefault(); addLinks(e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text")); });
+
 async function submit() {
   const err = $("#form-error");
   err.style.display = "none";
-  const urls = $("#urls").value.split(/\s+/).map((s) => s.trim()).filter(Boolean);
-  if (!urls.length) return;
+  if (urlInput.value.trim()) { addLinks(urlInput.value); urlInput.value = ""; }
+  const valid = links.filter((l) => !l.bad).map((l) => l.url);
+  if (!valid.length) {
+    if (links.length) { err.textContent = "Remove the invalid entries (marked in red) first."; err.style.display = "block"; }
+    return;
+  }
   $("#submit").disabled = true;
   try {
-    const res = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ urls, format: $("#format").value }) });
+    const res = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ urls: valid, format: $("#format").value }) });
     const results = await res.json();
     const failed = results.filter((r) => r.error);
-    $("#urls").value = failed.map((r) => r.input).join("\n");
+    const failedSet = new Set(failed.map((r) => r.input));
+    // Keep failed + invalid ones in the list, drop the ones queued OK
+    const keep = links.filter((l) => l.bad || failedSet.has(l.url)).map((l) => ({ url: l.url, bad: l.bad || failedSet.has(l.url) }));
+    links.length = 0; links.push(...keep);
+    renderLinks();
     if (failed.length) {
       err.textContent = failed.map((r) => `${r.input} — ${r.error}`).join("\n");
       err.style.display = "block";
@@ -560,7 +669,6 @@ async function submit() {
   }
 }
 $("#submit").onclick = submit;
-$("#urls").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) submit(); });
 
 function renderJobs(jobs) {
   $("#jobs-count").textContent = jobs.length;
