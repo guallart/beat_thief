@@ -268,8 +268,20 @@
   .p-sub { font-size: 12px; color: var(--danger); }
   .p-sub:empty { display: none; }
   .p-time { font: 12px var(--mono); color: var(--fg-muted); width: 40px; text-align: center; flex: none; }
-  #p-seek { flex: 1; min-width: 60px; accent-color: var(--accent); }
-  body.has-player { padding-bottom: 72px; }
+  .p-wave { position: relative; flex: 1; min-width: 60px; height: 52px; border-radius: 4px; overflow: hidden;
+    background: var(--bg); border: 1px solid var(--border-muted); }
+  .p-wave canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .p-wave-msg { position: absolute; inset: 0; display: grid; place-items: center; padding: 0 12px; font-size: 12px; color: var(--fg-muted); text-align: center; pointer-events: none; }
+  .p-wave .remaining { position: absolute; top: 0; bottom: 0; right: 0; left: 0; background: var(--bg-subtle); opacity: .55; pointer-events: none; }
+  /* The real range input sits on top, invisible except for the playhead, so dragging, clicking and the keyboard keep working. */
+  #p-seek { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; background: transparent; cursor: pointer;
+    -webkit-appearance: none; appearance: none; }
+  #p-seek::-webkit-slider-runnable-track { background: transparent; height: 100%; }
+  #p-seek::-moz-range-track { background: transparent; height: 100%; }
+  #p-seek::-webkit-slider-thumb { -webkit-appearance: none; width: 2px; height: 52px; background: var(--fg); border: 0; border-radius: 0; }
+  #p-seek::-moz-range-thumb { width: 2px; height: 52px; background: var(--fg); border: 0; border-radius: 0; }
+  #p-seek:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  body.has-player { padding-bottom: 84px; }
   .btn.on { color: var(--accent); border-color: var(--accent); }
   tbody tr.playing { background: var(--accent-bg); }
   tr.analyzing input.cell { opacity: .45; }
@@ -498,7 +510,12 @@
     <button class="btn sm" id="p-toggle" aria-label="Play / pause"></button>
     <div class="p-info"><div class="p-title" id="p-title"></div><div class="p-sub" id="p-sub"></div></div>
     <span class="p-time" id="p-cur">0:00</span>
-    <input type="range" id="p-seek" min="0" max="1000" value="0" aria-label="Seek">
+    <div class="p-wave" title="Waveform by frequency: red = bass, green = mids (vocals, leads), blue = highs (hats)">
+      <canvas id="p-wavecanvas" aria-hidden="true"></canvas>
+      <div class="remaining" id="p-remaining"></div>
+      <div class="p-wave-msg" id="p-wave-msg" hidden></div>
+      <input type="range" id="p-seek" min="0" max="1000" value="0" aria-label="Seek">
+    </div>
     <span class="p-time" id="p-dur">0:00</span>
     <button class="btn sm" id="p-close" aria-label="Close player">&times;</button>
   </div>
@@ -1036,6 +1053,8 @@ function playFile(path) {
   $("#p-dur").textContent = fmtDuration(f.duration) || "0:00";
   $("#player").hidden = false;
   document.body.classList.add("has-player");
+  seek.value = 0; updateRemaining();
+  loadWave(path);
   markPlaying();
 }
 function closePlayer() {
@@ -1052,13 +1071,80 @@ audio.addEventListener("loadedmetadata", () => { $("#p-dur").textContent = fmtDu
 audio.addEventListener("timeupdate", () => {
   $("#p-cur").textContent = fmtDuration(audio.currentTime);
   if (!seeking && isFinite(audio.duration)) seek.value = (audio.currentTime / audio.duration) * 1000;
+  updateRemaining();
 });
 audio.addEventListener("error", () => {
   if (playing) $("#p-sub").textContent = "Your browser can't play this format (AIFF only works in Safari).";
 });
 seek.addEventListener("pointerdown", () => (seeking = true));
 seek.addEventListener("pointerup", () => (seeking = false));
-seek.addEventListener("input", () => { if (isFinite(audio.duration)) audio.currentTime = (seek.value / 1000) * audio.duration; });
+seek.addEventListener("input", () => { updateRemaining(); if (isFinite(audio.duration)) audio.currentTime = (seek.value / 1000) * audio.duration; });
+/* ---------------------------------------------------------------- Waveform seek bar
+   The server returns a 3-band overview of the whole track (see beatthief/waveform.py). Bass is
+   drawn in red, mids (vocals, leads, synths) in green and highs (hats) in blue, so you can see
+   at a glance where a break is (the red disappears) and where vocals come in. */
+const waveCanvas = $("#p-wavecanvas");
+const WAVE_COLORS = ["#e5484d", "#30a46c", "#3e63dd"];   // low, mid, high
+let waveData = null;                                      // { low: [...], mid: [...], high: [...] } or null
+
+function drawWave() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = waveCanvas.clientWidth, h = waveCanvas.clientHeight;
+  if (!w || !h) return;
+  waveCanvas.width = Math.round(w * dpr);
+  waveCanvas.height = Math.round(h * dpr);
+  const g = waveCanvas.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const mid = h / 2;
+  if (!waveData) {                                        // loading / unavailable: just a centre line
+    g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--border").trim() || "#999";
+    g.fillRect(0, mid - 0.5, w, 1);
+    return;
+  }
+  const bands = [waveData.low, waveData.mid, waveData.high];
+  const n = bands[0].length, cols = Math.floor(w * dpr), colW = 1 / dpr;
+  for (let c = 0; c < cols; c++) {
+    const from = Math.floor((c / cols) * n), to = Math.max(from + 1, Math.floor(((c + 1) / cols) * n));
+    const heights = bands.map((b) => {
+      let m = 0;
+      for (let i = from; i < to; i++) if (b[i] > m) m = b[i];
+      return (m / 255) * (mid - 1);
+    });
+    // Tallest first, so the smaller bands stay visible in front of it.
+    [0, 1, 2].sort((a, b) => heights[b] - heights[a]).forEach((k) => {
+      g.fillStyle = WAVE_COLORS[k];
+      g.fillRect(c * colW, mid - heights[k], colW, heights[k] * 2);
+    });
+  }
+}
+
+async function loadWave(path) {
+  waveData = null;
+  drawWave();
+  const msg = $("#p-wave-msg");
+  msg.hidden = false;
+  msg.textContent = "Analysing waveform…";
+  let error = "";
+  try {
+    const res = await fetch(`/api/waveform/${urlPath(path)}`);
+    if (playing !== path) return;                          // another track was chosen meanwhile
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.low) waveData = data; else error = "unexpected response";
+    } else if (res.status === 404) {
+      error = "the server has no waveform support yet, restart BeatThief";
+    } else {
+      error = (await res.json().catch(() => ({}))).error || `error ${res.status}`;
+    }
+  } catch { if (playing !== path) return; error = "could not reach the server"; }
+  msg.hidden = !error;
+  msg.textContent = error ? `Waveform unavailable: ${error}` : "";
+  drawWave();
+}
+const updateRemaining = () => { $("#p-remaining").style.left = `${seek.value / 10}%`; };
+new ResizeObserver(drawWave).observe(waveCanvas);
+
 $("#p-toggle").onclick = () => { if (playing) audio.paused ? audio.play() : audio.pause(); };
 $("#p-close").onclick = closePlayer;
 // Space toggles playback unless you're typing or on a button.

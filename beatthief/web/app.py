@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from flask import Flask, Response, abort, jsonify, request, send_from_directory
 
-from .. import analysis, config, downloader, tagging, throttle
+from .. import analysis, config, downloader, tagging, throttle, waveform
 from ..sources import validate_and_clean_url
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -210,6 +210,30 @@ def get_file(rel):
 def stream_file(rel):
     base, path = _safe_file(rel)
     return send_from_directory(base, path.relative_to(base).as_posix())  # inline + Range support
+
+
+waveform_cache = {}  # (path, mtime, size) -> {"low", "mid", "high"}
+waveform_lock = threading.Lock()
+
+
+@app.get("/api/waveform/<path:rel>")
+def get_waveform(rel):
+    """Three-band overview of the track, for the player's seek bar."""
+    _, path = _safe_file(rel)
+    st = path.stat()
+    key = (str(path), st.st_mtime, st.st_size)
+    with waveform_lock:
+        cached = waveform_cache.get(key)
+    if cached is None:
+        try:
+            cached = waveform.compute(path)
+        except Exception as e:
+            return jsonify({"error": str(e) or "Could not analyse the file."}), 422
+        with waveform_lock:
+            if len(waveform_cache) > 50:
+                waveform_cache.clear()
+            waveform_cache[key] = cached
+    return jsonify(cached)
 
 
 @app.delete("/api/files/<path:rel>")

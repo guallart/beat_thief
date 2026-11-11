@@ -18,7 +18,7 @@ Edit any cell and it turns yellow until you save. `Enter` jumps to the row below
 
 A few other things live in that table:
 
-- The play button on each row opens a small player at the bottom of the page, so you can check a track before keeping it. AIFF files won't play in Chrome or Firefox, only in Safari.
+- The play button on each row opens a small player at the bottom of the page, so you can check a track before keeping it. Its progress bar is a waveform of the whole track split by frequency: red is bass, green is the mids (vocals, leads) and blue the highs (hats). You can see at a glance where the breaks are (the red disappears) and where the vocals come in, and click anywhere on it to jump there. AIFF files won't play in Chrome or Firefox, only in Safari.
 - The waveform button next to it detects the BPM and key of a track (in Camelot notation, like `8A`). **Analyze missing** does it for every visible row that has no BPM or key. The results are estimates and show up as unsaved changes, so you review them before they're written to the file. Expect the occasional double or half BPM.
 - Files can be downloaded or deleted from there too.
 
@@ -40,6 +40,24 @@ The download folder, default format, rate limits and theme all live in one place
 Settings are saved in `config.json` at the project root, and the command line reads the same file, so a change here applies right away without restarting anything.
 
 ## Installing
+
+### Quick install
+
+The install scripts check for Python 3.10+ and FFmpeg (installing them with your package manager or winget if missing), create the `.venv` and install the dependencies. They also write a small launcher.
+
+```bash
+./install.sh          # Linux (macOS with Homebrew also works)
+./run.sh              # starts the web interface at http://127.0.0.1:8000
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1     # Windows
+.\run.bat            # starts the web interface at http://127.0.0.1:8000
+```
+
+Both launchers pass their arguments on, so `./run.sh download "<url>" --format flac` works too. If you'd rather do it by hand, here are the steps.
+
+### Manual install
 
 You need Python and FFmpeg. Python 3.10 or newer should be fine (I've only run it on 3.14). FFmpeg does the conversion to WAV and the others, and has to be on your `PATH`.
 
