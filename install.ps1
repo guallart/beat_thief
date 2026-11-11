@@ -14,29 +14,42 @@ function Refresh-Path {
 function Have($c) { [bool](Get-Command $c -ErrorAction SilentlyContinue) }
 function Winget-Install($id) {
     if (-not (Have winget)) { return $false }
-    winget install --id $id -e --accept-package-agreements --accept-source-agreements
+    winget install --id $id -e --accept-package-agreements --accept-source-agreements | Out-Host   # Out-Host: its text must not become part of the return value
     Refresh-Path
     return $true
 }
 
 # --- Python (3.10+) ---------------------------------------------------------
+# Returns @{ Exe = ...; Args = ... } or $null. (Not a bare array: PowerShell turns a returned
+# one-element array into a plain string, and then $x[0] is its first letter, "p" for "python".)
 function Find-Python {
-    foreach ($cmd in @(@("py", "-3"), @("python"))) {
-        if (-not (Have $cmd[0])) { continue }
-        $extra = @($cmd | Select-Object -Skip 1)
-        & $cmd[0] @extra -c "import sys; sys.exit(sys.version_info < (3,10))" 2>$null
-        if ($LASTEXITCODE -eq 0) { return $cmd }
+    $candidates = @(
+        @{ Exe = "py";     Args = @("-3") },     # the Python launcher
+        @{ Exe = "python"; Args = @() }
+    )
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"           # a probe that fails (e.g. the Microsoft Store stub) must not abort the script
+    try {
+        foreach ($c in $candidates) {
+            if (-not (Have $c.Exe)) { continue }
+            $extra = $c.Args
+            & $c.Exe @extra -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) { return $c }
+        }
+    } finally {
+        $ErrorActionPreference = $previous
     }
     return $null
 }
 $py = Find-Python
-if (-not $py) {
+if ($null -eq $py) {
     Say "Python 3.10+ not found, installing it with winget"
     if (-not (Winget-Install "Python.Python.3.12")) { Fail "Install Python 3.10+ from https://www.python.org/downloads/ (tick 'Add python.exe to PATH') and run this script again." }
     $py = Find-Python
-    if (-not $py) { Fail "Python was installed but is not on PATH yet. Open a new terminal and run this script again." }
+    if ($null -eq $py) { Fail "Python was installed but is not on PATH yet. Open a new terminal and run this script again." }
 }
-$pyExe = $py[0]; $pyArgs = @($py | Select-Object -Skip 1)
+$pyExe = $py.Exe
+$pyArgs = @($py.Args)
 
 # --- FFmpeg -----------------------------------------------------------------
 if (-not (Have ffmpeg)) {
