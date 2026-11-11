@@ -231,6 +231,13 @@
   .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 400; }
   .toolbar .title { font-weight: 600; }
   .toolbar .text-input { width: 240px; }
+  .clear-wrap { position: relative; display: inline-flex; }
+  .clear-wrap .text-input { padding-right: 28px; }
+  .clear-wrap input::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }   /* our own button replaces the browser's */
+  .input-clear { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%;
+    background: none; color: var(--fg-muted); font-size: 16px; line-height: 1; cursor: pointer; }
+  .input-clear:hover { background: var(--border-muted); color: var(--fg); }
+  .input-clear[hidden] { display: none; }
   .dirty-info { color: var(--attention); font-size: 12px; font-weight: 500; }
   /* Sticky table header: it sticks to the top of the page, which needs every ancestor up to
      the page to leave overflow alone. On narrow windows the table must scroll sideways, so
@@ -322,7 +329,7 @@
   @media (max-width: 600px) {
     .row { flex-wrap: wrap; }
     .row-actions { width: 100%; justify-content: flex-end; }
-    .toolbar .text-input { width: 100%; }
+    .toolbar .text-input, .toolbar .clear-wrap { width: 100%; }
   }
 
   /* Update notice */
@@ -484,7 +491,10 @@
     <div class="box-header">
       <div class="toolbar" style="flex:1">
         <span class="title">Tags</span> <span class="counter" id="files-count">0</span>
-        <input class="text-input" id="filter" type="search" placeholder="Filter by title, artist, genre, key…" aria-label="Filter">
+        <span class="clear-wrap">
+          <input class="text-input" id="filter" type="search" placeholder="Filter by title, artist, genre, key…" aria-label="Filter">
+          <button type="button" class="input-clear" id="filter-clear" title="Clear the filter" aria-label="Clear the filter" hidden>&times;</button>
+        </span>
         <button class="btn sm" id="refresh">Refresh</button>
         <span class="menu-wrap">
           <button class="btn sm" id="cols-btn" aria-haspopup="true" aria-expanded="false" title="Show, hide and reorder columns">Columns</button>
@@ -1397,6 +1407,7 @@ window.addEventListener("resize", closeFilterPop);
 window.addEventListener("scroll", (e) => { if (!filterPop.hidden && !filterPop.contains(e.target)) closeFilterPop(); }, true);
 
 function visibleFiles() {
+  $("#filter-clear").hidden = !$("#filter").value;
   const q = $("#filter").value.trim().toLowerCase();
   let list = state.files;
   if (q) {
@@ -1536,6 +1547,14 @@ $("#save-tags").onclick = saveTags;
 $("#discard").onclick = () => { state.edits.clear(); renderTags(); };
 $("#refresh").onclick = loadFiles;
 $("#filter").addEventListener("input", () => { state.limit = PAGE; renderTags(); });
+function clearFilterText() {
+  const f = $("#filter");
+  f.value = "";
+  f.focus();
+  f.dispatchEvent(new Event("input"));
+}
+$("#filter-clear").onclick = clearFilterText;
+$("#filter").addEventListener("keydown", (e) => { if (e.key === "Escape" && e.target.value) { e.preventDefault(); clearFilterText(); } });
 $("#more-btn").onclick = () => { state.limit += PAGE; renderTags(); };
 
 $("#head-row").addEventListener("click", (e) => {
