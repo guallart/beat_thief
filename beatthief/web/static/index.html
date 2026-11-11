@@ -159,6 +159,14 @@
   .btn.primary:hover { background: var(--btn-primary-hover); }
   .btn:disabled { opacity: .55; cursor: not-allowed; }
   .btn.sm { height: 28px; padding: 0 10px; font-size: 12px; }
+  .btn.danger-fill { background: var(--danger); border-color: rgba(31,35,40,.15); color: #fff; }
+  .btn.danger-fill:hover { background: var(--danger); filter: brightness(.9); }
+  .confirm-body { padding: 4px 20px 6px; }
+  .confirm-file { padding: 8px 10px; margin-bottom: 10px; border: 1px solid var(--border-muted); border-radius: 6px; background: var(--bg-subtle); overflow-wrap: anywhere; }
+  .confirm-file .cf-name { font-weight: 600; }
+  .confirm-file .cf-path { margin-top: 2px; font: 12px var(--mono); color: var(--fg-muted); }
+  .confirm-body p { margin: 0 0 8px; }
+  .confirm-body .cf-warn { color: var(--attention); font-size: 12px; }
   .btn.danger:hover { color: var(--danger); border-color: var(--danger); background: var(--danger-bg); }
   .form-error { color: var(--danger); font-size: 12px; margin-top: 8px; display: none; white-space: pre-wrap; }
 
@@ -602,6 +610,21 @@
   <span>Served locally &middot; <code>127.0.0.1</code></span>
   <span><button class="footer-link" id="check-updates">Check for updates</button></span>
 </footer>
+
+<div class="modal" id="confirm-modal" hidden role="alertdialog" aria-modal="true" aria-labelledby="cf-title" aria-describedby="cf-text">
+  <div class="modal-card" style="max-width: 440px">
+    <h2 id="cf-title">Delete this file?</h2>
+    <div class="confirm-body">
+      <div class="confirm-file"><div class="cf-name" id="cf-name"></div><div class="cf-path" id="cf-path"></div></div>
+      <p id="cf-text">It will be deleted from disk for good. This can't be undone.</p>
+      <p class="cf-warn" id="cf-warn" hidden></p>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="cf-cancel">Cancel</button>
+      <button class="btn danger-fill" id="cf-ok">Delete file</button>
+    </div>
+  </div>
+</div>
 
 <div class="modal" id="update-modal" hidden role="dialog" aria-modal="true" aria-labelledby="upd-title">
   <div class="modal-card">
@@ -1475,11 +1498,56 @@ $("#head-row").addEventListener("click", (e) => {
   renderTags();
 });
 
+/* ---------------------------------------------------------------- Delete confirmation
+   A modal instead of the browser's confirm(): harder to dismiss by accident. Cancel has the focus, so
+   a stray Enter or Space does nothing; Esc or a click outside also cancels. */
+const confirmModal = $("#confirm-modal");
+function confirmDelete({ name, path, unsaved, opener }) {
+  return new Promise((resolve) => {
+    $("#cf-name").textContent = name;
+    $("#cf-path").textContent = path;
+    const warn = $("#cf-warn");
+    warn.hidden = !unsaved;
+    warn.textContent = unsaved ? "This file has unsaved tag changes, which will be lost too." : "";
+    confirmModal.hidden = false;
+    $("#cf-cancel").focus();
+    const done = (answer) => {
+      confirmModal.hidden = true;
+      confirmModal.removeEventListener("click", onClick);
+      document.removeEventListener("keydown", onKey, true);
+      if (!answer && opener?.isConnected) opener.focus();
+      resolve(answer);
+    };
+    const onClick = (e) => {
+      if (e.target === confirmModal) done(false);                       // click on the dark backdrop
+      else if (e.target.closest("#cf-cancel")) done(false);
+      else if (e.target.closest("#cf-ok")) done(true);
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(false); }
+      else if (e.key === "Tab") {                                       // keep the focus inside the dialog
+        e.preventDefault();
+        const next = document.activeElement === $("#cf-cancel") ? $("#cf-ok") : $("#cf-cancel");
+        next.focus();
+      }
+    };
+    confirmModal.addEventListener("click", onClick);
+    document.addEventListener("keydown", onKey, true);
+  });
+}
+
 document.addEventListener("click", async (e) => {
   const del = e.target.closest("[data-delete]");
   if (!del) return;
   const path = del.dataset.delete;
-  if (!confirm(`Delete "${path}" from disk? This cannot be undone.`)) return;
+  const file = state.files.find((f) => f.path === path);
+  const artist = file && shownValue(file, "artist"), title = file && shownValue(file, "title");
+  if (!(await confirmDelete({
+    name: title ? (artist ? `${artist} – ${title}` : title) : (file?.name || path),
+    path,
+    unsaved: state.edits.has(path),
+    opener: del,
+  }))) return;
   const res = await fetch(`/api/files/${urlPath(path)}`, { method: "DELETE" });
   if (!res.ok) { showMsg($("#tags-msg"), `Could not delete ${path}.`, "error"); $("#tags-msg-wrap").hidden = false; return; }
   state.edits.delete(path);
