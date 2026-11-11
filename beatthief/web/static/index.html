@@ -373,7 +373,11 @@
   .knob.killed .k-label { text-decoration: line-through; }
   .knob .k-label { margin-top: -1px; font: 700 9px/1 var(--sans); letter-spacing: .04em; color: var(--c); }
   body.knob-dragging, body.knob-dragging * { cursor: ns-resize !important; user-select: none; }
-  @media (max-width: 700px) { .eq { display: none; } }
+  .eq-reset { flex: none; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg); color: var(--fg-muted); cursor: pointer; }
+  .eq-reset:hover:not(:disabled) { color: var(--fg); background: var(--border-muted); }
+  .eq-reset:disabled { opacity: .35; cursor: default; }
+  @media (max-width: 700px) { .eq, .eq-reset { display: none; } }
 
   /* Preview player */
   .player { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--bg-subtle); border-top: 1px solid var(--border); }
@@ -626,6 +630,9 @@
     </div>
     <span class="p-time" id="p-dur">0:00</span>
     <div class="eq" id="eq" role="group" aria-label="Equalizer"></div>
+    <button type="button" class="eq-reset" id="eq-reset" title="Reset the equalizer (all bands flat)" aria-label="Reset the equalizer" disabled>
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 2.5a5.5 5.5 0 1 0 5.3 7 .75.75 0 0 1 1.45.4A7 7 0 1 1 8 1c1.6 0 3 .55 4.1 1.45V1.75a.75.75 0 0 1 1.5 0v3.5a.75.75 0 0 1-.75.75h-3.5a.75.75 0 0 1 0-1.5h1.6A5.5 5.5 0 0 0 8 2.5Z"/></svg>
+    </button>
     <button class="btn sm" id="p-close" aria-label="Close player">&times;</button>
   </div>
   <audio id="audio"></audio>
@@ -1844,6 +1851,7 @@ function setPos(i, p) {
   if (p === eq.pos[i]) return;
   eq.pos[i] = p;
   drawKnob(i);
+  syncEqReset();
   applyEQ(false);
   try { localStorage.setItem(EQ_KEY, JSON.stringify(eq.pos)); } catch {}
 }
@@ -1853,6 +1861,12 @@ function stepDb(i, delta) {
   setPos(i, posOf(Math.max(EQ_MIN_DB, Math.min(EQ_MAX_DB, (db === -Infinity ? EQ_MIN_DB : db) + delta))));
 }
 knobs.forEach((_, i) => drawKnob(i));
+
+// Reset: all three bands back to flat. Disabled while they already are.
+const eqReset = $("#eq-reset");
+function syncEqReset() { eqReset.disabled = eq.pos.every((p) => p === 0); }
+eqReset.onclick = () => eq.pos.forEach((_, i) => setPos(i, 0));
+syncEqReset();
 
 eqEl.addEventListener("pointerdown", (e) => {
   const knob = e.target.closest(".knob");
