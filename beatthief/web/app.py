@@ -1,8 +1,10 @@
 """Local web UI for BeatThief (Flask). Start it with:  python -m beatthief web"""
 import os
+import socket
 import threading
 import time
 import uuid
+import webbrowser
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
@@ -337,8 +339,34 @@ def update_apply():
     return ("", 202) if ok else (jsonify({"error": error}), 409)
 
 
-def run(host="127.0.0.1", port=8000):
+def _open_browser_when_ready(host, port):
+    """Open the UI in the default browser, but only once the server accepts connections (otherwise a
+    fast browser would get "connection refused")."""
+    # A wildcard address isn't something a browser can visit: use the local one instead.
+    visit = "127.0.0.1" if host in ("", "0.0.0.0", "::") else host
+    url = f"http://[{visit}]:{port}" if ":" in visit else f"http://{visit}:{port}"
+
+    def work():
+        for _ in range(100):                                   # wait up to ~10 s for the server
+            try:
+                socket.create_connection((visit, port), timeout=0.2).close()
+                break
+            except OSError:
+                time.sleep(0.1)
+        else:
+            return
+        try:
+            webbrowser.open(url, new=2)                        # a new tab; harmless if there is no browser/display
+        except Exception:
+            pass
+    threading.Thread(target=work, daemon=True).start()
+
+
+def run(host="127.0.0.1", port=8000, open_browser=True):
     print(f"Saving to {config.get_download_dir()}")
     print(f"BeatThief running at http://{host}:{port}")
     updater.start_check()
+    # Not after an automatic restart (the page reloads itself) nor when switched off.
+    if open_browser and not os.environ.get("BEATTHIEF_NO_BROWSER") and not os.environ.get("BEATTHIEF_RESTARTED"):
+        _open_browser_when_ready(host, port)
     app.run(host=host, port=port, threaded=True)

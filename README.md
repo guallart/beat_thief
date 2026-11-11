@@ -116,7 +116,7 @@ Run these from the project folder, with the venv activated (`source .venv/bin/ac
 python -m beatthief web
 ```
 
-Open <http://127.0.0.1:8000>. Use `--port` to change the port. By default it only listens on your own machine. `--host 0.0.0.0` makes it reachable from the rest of your network, but there is no login, so only do that on a network you trust.
+BeatThief opens <http://127.0.0.1:8000> in your default browser as soon as it is ready (add `--no-browser`, or set `BEATTHIEF_NO_BROWSER=1`, if you'd rather open it yourself; it also doesn't reopen after an automatic restart following an update). Use `--port` to change the port. By default it only listens on your own machine. `--host 0.0.0.0` makes it reachable from the rest of your network, but there is no login, so only do that on a network you trust.
 
 ### Command line
 

@@ -36,6 +36,7 @@ def supervise(argv) -> int:
             if not updater.install_requirements():
                 print("Could not install every requirement; starting anyway.", flush=True)
         print("Restarting BeatThief...\n", flush=True)
+        env["BEATTHIEF_RESTARTED"] = "1"      # the open page reloads itself: don't open another tab
 
 
 def main(argv=None) -> int:
@@ -47,6 +48,7 @@ def main(argv=None) -> int:
     web.add_argument("--host", default="127.0.0.1",
                      help="address to listen on; use 0.0.0.0 to expose it on your network (there is no login!)")
     web.add_argument("--port", type=int, default=8000)
+    web.add_argument("--no-browser", action="store_true", help="don't open the browser automatically")
 
     download = commands.add_parser("download", help="download a track or a playlist from the terminal")
     download.add_argument("url")
@@ -59,7 +61,7 @@ def main(argv=None) -> int:
         if not updater.supervised():
             return supervise(argv)
         from .web.app import run
-        run(args.host, args.port)
+        run(args.host, args.port, open_browser=not args.no_browser)
         return 0
 
     ok, files = download_audio(args.url, playlist=args.playlist, audio_format=args.format)
