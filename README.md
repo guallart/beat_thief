@@ -16,6 +16,8 @@ Everything in the download folder (and its subfolders) shows up in the **Library
 
 Edit any cell and it turns yellow until you save. `Enter` jumps to the row below, `Ctrl+S` saves everything. The same table works with files you didn't download here: WAV, AIFF, MP3, FLAC, OGG/Opus and M4A are all supported.
 
+The table is yours to arrange: drag a column header to move it (a blue line shows where it will land), drag the right edge of a header to resize it (double-click to restore its width), and use the **Columns** button to show or hide columns. Clicking a header still sorts. The layout is remembered in your browser, and **Reset** in the Columns menu brings back the default.
+
 A few other things live in that table:
 
 - The play button on each row opens a small player at the bottom of the page, so you can check a track before keeping it. Its progress bar is a waveform of the whole track split by frequency: red is bass, green is the mids (vocals, leads) and blue the highs (hats). You can see at a glance where the breaks are (the red disappears) and where the vocals come in, and click anywhere on it to jump there. AIFF files won't play in Chrome or Firefox, only in Safari.

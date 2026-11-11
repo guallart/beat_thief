@@ -214,14 +214,34 @@
      it becomes its own scroll area (with the header sticking inside it) instead. */
   .box-sticky { overflow: visible; }
   .box-sticky > .box-header { border-radius: 6px 6px 0 0; }
-  .table-wrap { overflow: auto; max-height: 75vh; }
-  @media (min-width: 1200px) { .table-wrap { overflow: visible; max-height: none; } }
-  table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 1140px; table-layout: fixed; }
+  .table-wrap { overflow: visible; }
+  .table-wrap.scroll { overflow: auto; max-height: 75vh; }   /* set from JS when the columns are wider than the page */
+  table { border-collapse: separate; border-spacing: 0; width: 100%; table-layout: fixed; }
   th {
     text-align: left; font-size: 12px; font-weight: 600; color: var(--fg-muted); white-space: nowrap;
     padding: 8px 7px; border-bottom: 1px solid var(--border); background: var(--bg-subtle);
-    position: sticky; top: 0; z-index: 2; user-select: none;
+    position: sticky; top: 0; z-index: 2; user-select: none; overflow: hidden; text-overflow: ellipsis;
   }
+  th.filler, td.filler { padding: 0; }
+  /* Column customisation: resize handle, drag-to-reorder indicators, Columns menu */
+  .col-resizer { position: absolute; top: 0; right: 0; width: 9px; height: 100%; cursor: col-resize; z-index: 3; }
+  .col-resizer::after { content: ""; position: absolute; top: 25%; bottom: 25%; right: 3px; width: 2px; border-radius: 1px; background: var(--border); }
+  th:hover .col-resizer::after { background: var(--fg-muted); }
+  .col-resizer:hover::after, .col-resizer.active::after { background: var(--accent); top: 0; bottom: 0; }
+  body.col-resizing { cursor: col-resize; user-select: none; }
+  th.dragging { opacity: .4; }
+  th.drop-before { box-shadow: inset 3px 0 0 var(--accent); }
+  th.drop-after { box-shadow: inset -3px 0 0 var(--accent); }
+  .menu-wrap { position: relative; display: inline-block; }
+  .popover { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; min-width: 230px; padding: 8px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.2); font-weight: 400; }
+  .popover[hidden] { display: none; }
+  .popover .pop-title { font-size: 12px; font-weight: 600; color: var(--fg-muted); padding: 2px 6px 6px; }
+  .popover label { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
+  .popover label:hover { background: var(--bg-subtle); }
+  .popover label.locked { opacity: .55; cursor: default; }
+  .popover .pop-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 6px; padding: 8px 6px 0; border-top: 1px solid var(--border-muted); font-size: 12px; color: var(--fg-muted); }
+
   th.sortable { cursor: pointer; }
   th.sortable:hover { color: var(--fg); }
   th .arrow { margin-left: 4px; font-size: 10px; }
@@ -377,6 +397,10 @@
         <span class="title">Tags</span> <span class="counter" id="files-count">0</span>
         <input class="text-input" id="filter" type="search" placeholder="Filter by title, artist, genre, key…" aria-label="Filter">
         <button class="btn sm" id="refresh">Refresh</button>
+        <span class="menu-wrap">
+          <button class="btn sm" id="cols-btn" aria-haspopup="true" aria-expanded="false" title="Show, hide and reorder columns">Columns</button>
+          <div class="popover" id="cols-menu" hidden></div>
+        </span>
         <button class="btn sm" id="analyze-missing" title="Detect BPM and key for the files below that don't have them">Analyze missing</button>
         <span class="spacer"></span>
         <span class="dirty-info" id="dirty-info" hidden></span>
@@ -387,27 +411,8 @@
     <div class="box-body" id="tags-msg-wrap" style="padding:0 16px" hidden><div class="msg" id="tags-msg"></div></div>
     <div class="table-wrap">
       <table>
-        <colgroup>
-          <col style="width:48px"><col style="width:176px"><col style="width:124px"><col style="width:112px">
-          <col style="width:60px"><col style="width:116px"><col style="width:58px"><col style="width:54px">
-          <col style="width:104px"><col style="width:54px"><col style="width:92px"><col style="width:142px">
-        </colgroup>
-        <thead>
-          <tr>
-            <th></th>
-            <th class="sortable" data-sort="title">Title</th>
-            <th class="sortable" data-sort="artist">Artist</th>
-            <th class="sortable" data-sort="album">Album</th>
-            <th class="sortable" data-sort="year">Year</th>
-            <th class="sortable" data-sort="genre">Genre</th>
-            <th class="sortable" data-sort="bpm">BPM</th>
-            <th class="sortable" data-sort="key">Key</th>
-            <th class="sortable" data-sort="comment">Comment</th>
-            <th class="sortable" data-sort="duration">Time</th>
-            <th class="sortable" data-sort="modified">Added</th>
-            <th></th>
-          </tr>
-        </thead>
+        <colgroup id="cols"></colgroup>
+        <thead><tr id="head-row"></tr></thead>
         <tbody id="tags-body"></tbody>
       </table>
     </div>
@@ -851,6 +856,194 @@ const sortValue = (f, key) => {
   return f[key] ?? 0;
 };
 
+/* ---------------------------------------------------------------- Columns: resize, move, show/hide
+   COLS is the single description of the table. The layout (order, hidden columns, widths) is
+   remembered in this browser's localStorage. */
+const COLS = [
+  { id: "cover", fixed: "start", width: 48, label: "" },
+  { id: "title", label: "Title", sort: "title", width: 200, min: 100, field: true, locked: true },
+  { id: "artist", label: "Artist", sort: "artist", width: 124, min: 60, field: true },
+  { id: "album", label: "Album", sort: "album", width: 112, min: 60, field: true },
+  { id: "year", label: "Year", sort: "year", width: 60, min: 44, field: true, mono: true },
+  { id: "genre", label: "Genre", sort: "genre", width: 116, min: 60, field: true },
+  { id: "bpm", label: "BPM", sort: "bpm", width: 58, min: 44, field: true, mono: true },
+  { id: "key", label: "Key", sort: "key", width: 54, min: 44, field: true, mono: true },
+  { id: "comment", label: "Comment", sort: "comment", width: 104, min: 60, field: true },
+  { id: "duration", label: "Time", name: "Duration", sort: "duration", width: 54, min: 44 },
+  { id: "modified", label: "Added", name: "Date added", sort: "modified", width: 92, min: 70 },
+  { id: "actions", fixed: "end", width: 142, label: "" },
+];
+const colById = (id) => COLS.find((c) => c.id === id);
+const MOVABLE = COLS.filter((c) => !c.fixed).map((c) => c.id);
+const LAYOUT_KEY = "beatthief.columns.v1";
+const layout = { order: [...MOVABLE], hidden: [], widths: {} };
+
+function loadLayout() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LAYOUT_KEY) || "null");
+    if (!saved) return;
+    const known = (saved.order || []).filter((id) => MOVABLE.includes(id));
+    layout.order = [...new Set([...known, ...MOVABLE])];                       // new columns land at the end
+    layout.hidden = (saved.hidden || []).filter((id) => MOVABLE.includes(id) && !colById(id).locked);
+    for (const [id, w] of Object.entries(saved.widths || {})) if (colById(id) && !colById(id).fixed && w >= colById(id).min) layout.widths[id] = Math.min(w, 1200);
+  } catch {}
+}
+function saveLayout() { try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)); } catch {} }
+function resetLayout() {
+  layout.order = [...MOVABLE]; layout.hidden = []; layout.widths = {};
+  try { localStorage.removeItem(LAYOUT_KEY); } catch {}
+  applyLayout();
+}
+
+const colWidth = (c) => layout.widths[c.id] ?? c.width;
+const visibleCols = () => [colById("cover"), ...layout.order.filter((id) => !layout.hidden.includes(id)).map(colById), colById("actions")];
+
+function cellHtml(c, f, input) {
+  switch (c.id) {
+    case "cover": {
+      const cover = f.has_cover
+        ? `<img loading="lazy" alt="" src="/api/cover/${urlPath(f.path)}?v=${f.modified}" onerror="this.remove()">` : ICON_NOTE;
+      return `<td class="cover-cell"><div class="cover">${cover}</div></td>`;
+    }
+    case "title": return `<td>${input("title")}<div class="fname" title="${esc(f.path)}">${esc(f.path)}</div></td>`;
+    case "duration": return `<td class="num">${fmtDuration(f.duration)}</td>`;
+    case "modified": return `<td class="num" title="${fmtSize(f.size)}">${fmtDate(f.modified)}</td>`;
+    case "actions": return `<td class="actions">
+        <button class="btn sm" data-play="${esc(f.path)}" title="Preview">${ICON_PLAY}</button>
+        <button class="btn sm" data-analyze="${esc(f.path)}" title="Detect BPM and key">${ICON_ANALYZE}</button>
+        <a class="btn sm" href="/files/${urlPath(f.path)}" title="Download">${ICON_DL}</a>
+        <button class="btn sm danger" data-delete="${esc(f.path)}" title="Delete file">${ICON_DEL}</button>
+      </td>`;
+    default: return `<td>${input(c.id, c.mono ? "mono" : "")}</td>`;
+  }
+}
+
+// Widths live in <colgroup>; the table is exactly as wide as its columns (plus a flexible filler
+// column that takes whatever space is left), and scrolls sideways when they don't fit.
+function updateWidths() {
+  const cols = visibleCols();
+  const els = $("#cols").children;
+  let total = 0;
+  cols.forEach((c, i) => { const w = colWidth(c); els[i].style.width = w + "px"; total += w; });
+  $("#page-library table").style.minWidth = total + "px";
+  $(".table-wrap").classList.toggle("scroll", total > $(".table-wrap").parentElement.clientWidth);
+}
+
+function renderColumns() {
+  const cols = visibleCols();
+  $("#cols").innerHTML = cols.map(() => "<col>").join("") + "<col>";   // last one is the filler
+  $("#head-row").innerHTML = cols.map((c) => {
+    const attrs = [`data-col="${c.id}"`];
+    if (c.sort) attrs.push(`class="sortable" data-sort="${c.sort}"`);
+    if (!c.fixed) attrs.push('draggable="true"', 'title="Click to sort · drag to move · drag the right edge to resize"');
+    const grip = c.fixed ? "" : '<span class="col-resizer" title="Drag to resize · double-click to reset"></span>';
+    return `<th ${attrs.join(" ")}>${esc(c.label)}${grip}</th>`;
+  }).join("") + '<th class="filler"></th>';
+  updateWidths();
+}
+function applyLayout() { saveLayout(); renderColumns(); renderTags(); }
+
+// --- resize: drag the right edge of a header
+const headRow = $("#head-row");
+headRow.addEventListener("pointerdown", (e) => {
+  const grip = e.target.closest(".col-resizer");
+  if (!grip || e.button) return;
+  e.preventDefault();
+  const th = grip.parentElement, col = colById(th.dataset.col);
+  const startX = e.clientX, startW = th.offsetWidth;
+  th.draggable = false;                                  // otherwise the browser starts a column drag
+  try { grip.setPointerCapture(e.pointerId); } catch {}
+  grip.classList.add("active");
+  document.body.classList.add("col-resizing");
+  const move = (ev) => { layout.widths[col.id] = Math.min(1200, Math.max(col.min, Math.round(startW + ev.clientX - startX))); updateWidths(); };
+  const stop = () => {
+    grip.removeEventListener("pointermove", move);
+    grip.removeEventListener("pointerup", stop);
+    grip.removeEventListener("pointercancel", stop);
+    grip.classList.remove("active");
+    document.body.classList.remove("col-resizing");
+    th.draggable = true;
+    saveLayout();
+  };
+  grip.addEventListener("pointermove", move);
+  grip.addEventListener("pointerup", stop);
+  grip.addEventListener("pointercancel", stop);
+});
+headRow.addEventListener("dblclick", (e) => {
+  const grip = e.target.closest(".col-resizer");
+  if (!grip) return;
+  delete layout.widths[grip.parentElement.dataset.col];
+  saveLayout(); updateWidths();
+});
+
+// --- move: drag a header onto another one (a blue line shows where it will land)
+let dragCol = null, dropAt = null;
+const clearDropMarks = () => $$("#head-row th").forEach((t) => t.classList.remove("drop-before", "drop-after", "dragging"));
+headRow.addEventListener("dragstart", (e) => {
+  const th = e.target.closest("th[data-col]");
+  if (!th || th.draggable === false) return e.preventDefault();
+  dragCol = th.dataset.col;
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/plain", dragCol);
+  th.classList.add("dragging");
+});
+headRow.addEventListener("dragover", (e) => {
+  if (!dragCol) return;
+  const th = e.target.closest("th[data-col]");
+  if (!th) return;
+  e.preventDefault();
+  const target = colById(th.dataset.col);
+  const rect = th.getBoundingClientRect();
+  // Dropping on the cover column means "first", on the actions column "last".
+  const side = target.fixed === "start" ? "after" : target.fixed === "end" ? "before" : (e.clientX < rect.left + rect.width / 2 ? "before" : "after");
+  $$("#head-row th").forEach((t) => t.classList.remove("drop-before", "drop-after"));
+  th.classList.add(side === "before" ? "drop-before" : "drop-after");
+  dropAt = { id: target.id, side };
+});
+headRow.addEventListener("drop", (e) => {
+  e.preventDefault();
+  if (!dragCol || !dropAt) return;
+  const order = layout.order.filter((id) => id !== dragCol);
+  const target = colById(dropAt.id);
+  let at;
+  if (target.fixed === "start") at = 0;
+  else if (target.fixed === "end") at = order.length;
+  else at = order.indexOf(dropAt.id) + (dropAt.side === "after" ? 1 : 0);
+  order.splice(at, 0, dragCol);
+  layout.order = order;
+  applyLayout();
+});
+headRow.addEventListener("dragend", () => { dragCol = dropAt = null; clearDropMarks(); });
+
+// --- show / hide: the Columns menu
+const colsMenu = $("#cols-menu"), colsBtn = $("#cols-btn");
+function buildColsMenu() {
+  colsMenu.innerHTML = `<div class="pop-title">Show columns</div>` + layout.order.map((id) => {
+    const c = colById(id);
+    return `<label class="${c.locked ? "locked" : ""}"><input type="checkbox" data-col="${id}" ${layout.hidden.includes(id) ? "" : "checked"} ${c.locked ? "disabled" : ""}> ${esc(c.name || c.label)}</label>`;
+  }).join("") + `<div class="pop-foot"><span>Drag headers to move,<br>drag their edges to resize.</span><button class="btn sm" id="cols-reset">Reset</button></div>`;
+}
+function toggleColsMenu(open = colsMenu.hidden) {
+  if (open) buildColsMenu();
+  colsMenu.hidden = !open;
+  colsBtn.setAttribute("aria-expanded", String(open));
+}
+colsBtn.onclick = () => toggleColsMenu();
+colsMenu.addEventListener("change", (e) => {
+  const box = e.target.closest("input[data-col]");
+  if (!box) return;
+  const id = box.dataset.col;
+  layout.hidden = box.checked ? layout.hidden.filter((x) => x !== id) : [...layout.hidden, id];
+  applyLayout();
+});
+colsMenu.addEventListener("click", (e) => { if (e.target.id === "cols-reset") { resetLayout(); buildColsMenu(); } });
+document.addEventListener("click", (e) => { if (!colsMenu.hidden && !e.target.closest(".menu-wrap")) toggleColsMenu(false); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !colsMenu.hidden) { toggleColsMenu(false); colsBtn.focus(); } });
+window.addEventListener("resize", updateWidths);
+
+loadLayout();
+renderColumns();
+
 function visibleFiles() {
   const q = $("#filter").value.trim().toLowerCase();
   let list = state.files;
@@ -873,28 +1066,15 @@ function renderTags() {
 
   const all = visibleFiles();
   const shown = all.slice(0, state.limit);
+  const cols = visibleCols();
   $("#tags-body").innerHTML = shown.map((f) => {
     const edit = state.edits.get(f.path) || {};
     const input = (k, cls = "") => {
       const dirty = k in edit;
       return `<input class="cell ${cls} ${dirty ? "dirty" : ""}" data-path="${esc(f.path)}" data-field="${k}" value="${esc(dirty ? edit[k] : f.tags[k])}" spellcheck="false" autocomplete="off">`;
     };
-    const cell = (k, cls = "") => `<td>${input(k, cls)}</td>`;
-    const cover = f.has_cover
-      ? `<img loading="lazy" alt="" src="/api/cover/${urlPath(f.path)}?v=${f.modified}" onerror="this.remove()">` : ICON_NOTE;
-    return `<tr class="${state.analyzing.has(f.path) ? "analyzing" : ""}">
-      <td class="cover-cell"><div class="cover">${cover}</div></td>
-      <td>${input("title")}<div class="fname" title="${esc(f.path)}">${esc(f.path)}</div></td>
-      ${cell("artist")}${cell("album")}${cell("year", "mono")}${cell("genre")}${cell("bpm", "mono")}${cell("key", "mono")}${cell("comment")}
-      <td class="num">${fmtDuration(f.duration)}</td>
-      <td class="num" title="${fmtSize(f.size)}">${fmtDate(f.modified)}</td>
-      <td class="actions">
-        <button class="btn sm" data-play="${esc(f.path)}" title="Preview">${ICON_PLAY}</button>
-        <button class="btn sm" data-analyze="${esc(f.path)}" title="Detect BPM and key">${ICON_ANALYZE}</button>
-        <a class="btn sm" href="/files/${urlPath(f.path)}" title="Download">${ICON_DL}</a>
-        <button class="btn sm danger" data-delete="${esc(f.path)}" title="Delete file">${ICON_DEL}</button>
-      </td>
-    </tr>`;
+    const cells = cols.map((c) => cellHtml(c, f, input)).join("");
+    return `<tr class="${state.analyzing.has(f.path) ? "analyzing" : ""}">${cells}<td class="filler"></td></tr>`;
   }).join("");
 
   const empty = $("#tags-empty");
@@ -1007,11 +1187,14 @@ $("#refresh").onclick = loadFiles;
 $("#filter").addEventListener("input", () => { state.limit = PAGE; renderTags(); });
 $("#more-btn").onclick = () => { state.limit += PAGE; renderTags(); };
 
-$$("th.sortable").forEach((th) => (th.onclick = () => {
+$("#head-row").addEventListener("click", (e) => {
+  if (e.target.closest(".col-resizer")) return;
+  const th = e.target.closest("th[data-sort]");
+  if (!th) return;
   const key = th.dataset.sort;
   state.sort = state.sort.key === key ? { key, dir: -state.sort.dir } : { key, dir: key === "modified" ? -1 : 1 };
   renderTags();
-}));
+});
 
 document.addEventListener("click", async (e) => {
   const del = e.target.closest("[data-delete]");
