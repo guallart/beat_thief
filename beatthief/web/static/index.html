@@ -1750,6 +1750,7 @@ async function analyze(paths, mode) {
   }
   paths.forEach((p) => state.analyzing.set(p, mode));
   state.analysisErrors = [];
+  state.analysisBuiltin = false;
   $("#tags-msg-wrap").hidden = true;
   renderTags();
   analysisTimer ??= setInterval(pollAnalysis, 1000);
@@ -1766,6 +1767,7 @@ async function pollAnalysis() {
     changed = true;
     const file = state.files.find((f) => f.path === path);
     if (st.status === "error") { state.analysisErrors.push(`${path}: ${st.error}`); continue; }
+    if (st.engine === "builtin") state.analysisBuiltin = true;
     if (!file) continue;
     for (const [field, value] of [["bpm", String(st.bpm)], ["key", st.key]]) {
       if (mode === "force" || !shownValue(file, field)) setEdit(file, field, value);
@@ -1781,7 +1783,8 @@ async function pollAnalysis() {
   if (state.analysisErrors.length) {
     showMsg($("#tags-msg"), `${state.analysisErrors.length} file(s) could not be analysed:\n${state.analysisErrors.join("\n")}`, "error");
   } else {
-    showMsg($("#tags-msg"), "Analysis finished. Review the highlighted BPM and Key cells, then press Save changes.", "ok");
+    showMsg($("#tags-msg"), "Analysis finished. Review the highlighted BPM and Key cells, then press Save changes."
+      + (state.analysisBuiltin ? "\nThis system has no essentia, so a built-in estimator was used: the BPM is reliable, the key is a rougher guess, so double-check it." : ""), "ok");
   }
 }
 

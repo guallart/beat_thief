@@ -104,7 +104,7 @@ python -m pip install -r requirements.txt
 
 If PowerShell refuses to run the activation script, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, or use `.venv\Scripts\activate.bat` from a regular Command Prompt. You can also skip activation entirely and call the venv's Python directly, like `.venv\Scripts\python -m beatthief web`.
 
-BPM and key detection depends on [essentia](https://essentia.upf.edu/), which has no Windows build. `requirements.txt` skips it there, so everything else installs fine, and the analyze buttons will just tell you it isn't available.
+BPM and key detection uses [essentia](https://essentia.upf.edu/) when it is installed, which gives the best results, but essentia has no Windows build, so `requirements.txt` skips it there. Without it, BeatThief falls back to a built-in estimator that needs nothing beyond numpy, so the analyze buttons work on Windows too. On a library of techno it came out practically identical to essentia for the BPM (58 of 65 tracks within 1 BPM, none off by more than 4), but the key matched essentia exactly on only about half of the tracks (more if you count the relative or neighbouring key as a near miss): in dance music the kick and bass swamp the harmony, and that is hard for any simple method. The results are shown as pending edits, so you always review them before they are written, and the message after an analysis tells you when the fallback was used.
 
 ## Running it
 
