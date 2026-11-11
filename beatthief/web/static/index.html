@@ -931,14 +931,14 @@ const sortValue = (f, key) => {
    remembered in this browser's localStorage. */
 const COLS = [
   { id: "cover", fixed: "start", width: 48, label: "" },
-  { id: "title", label: "Title", sort: "title", width: 184, min: 100, field: true, locked: true },
-  { id: "artist", label: "Artist", sort: "artist", width: 122, min: 60, field: true },
-  { id: "album", label: "Album", sort: "album", width: 108, min: 60, field: true },
+  { id: "title", flex: true, label: "Title", sort: "title", width: 184, min: 100, field: true, locked: true },
+  { id: "artist", flex: true, label: "Artist", sort: "artist", width: 122, min: 60, field: true },
+  { id: "album", flex: true, label: "Album", sort: "album", width: 108, min: 60, field: true },
   { id: "year", label: "Year", sort: "year", filter: true, width: 74, min: 66, field: true, mono: true },
-  { id: "genre", label: "Genre", sort: "genre", filter: true, width: 122, min: 76, field: true },
+  { id: "genre", flex: true, label: "Genre", sort: "genre", filter: true, width: 122, min: 76, field: true },
   { id: "bpm", label: "BPM", sort: "bpm", filter: true, width: 72, min: 64, field: true, mono: true },
   { id: "key", label: "Key", sort: "key", filter: true, width: 68, min: 60, field: true, mono: true },
-  { id: "comment", label: "Comment", sort: "comment", width: 116, min: 60, field: true },
+  { id: "comment", flex: true, label: "Comment", sort: "comment", width: 116, min: 60, field: true },
   { id: "duration", label: "Time", name: "Duration", sort: "duration", filter: true, width: 70, min: 62 },
   { id: "modified", label: "Added", name: "Date added", sort: "modified", filter: true, width: 104, min: 90 },
   { id: "actions", fixed: "end", width: 142, label: "" },
@@ -988,16 +988,39 @@ function cellHtml(c, f, input) {
   }
 }
 
-// Widths live in <colgroup>; the table is exactly as wide as its columns (plus a flexible filler
-// column that takes whatever space is left), and scrolls sideways when they don't fit.
+// Widths live in <colgroup>. The stored widths are the "natural" ones; when they add up to less
+// than the room available (for example after hiding a column), the text columns (flex: true) grow
+// to fill it, while the numeric ones keep their compact width. When the natural widths are more
+// than the room, the table keeps them and scrolls sideways.
+const tableRoom = () => $(".table-wrap").parentElement.clientWidth;      // 0 while the Library tab is hidden
+
+function renderedWidths(cols, room) {
+  const stored = cols.map(colWidth);
+  const flexTotal = cols.reduce((n, c, i) => n + (c.flex ? stored[i] : 0), 0);
+  const fixedTotal = stored.reduce((a, b) => a + b, 0) - flexTotal;
+  const k = room && flexTotal ? Math.max(1, (room - fixedTotal) / flexTotal) : 1;
+  return cols.map((c, i) => (c.flex ? Math.floor(stored[i] * k) : stored[i]));
+}
+
+// The stored width that makes column `col` render at `target` px, given that the other flexible
+// columns will stretch or shrink around it. (Needed so that dragging an edge follows the cursor.)
+function storedFor(col, target) {
+  if (!col.flex) return target;
+  const room = tableRoom(), cols = visibleCols();
+  let others = 0, fixed = 0;
+  cols.forEach((c) => { if (c === col) return; if (c.flex) others += colWidth(c); else fixed += colWidth(c); });
+  if (!room || !others || fixed + others + target >= room) return target;
+  return Math.max(col.min, Math.round((target * others) / (room - fixed - target)));
+}
+
 function updateWidths() {
-  const cols = visibleCols();
+  const cols = visibleCols(), room = tableRoom();
   const els = $("#cols").children;
-  let total = 0;
-  cols.forEach((c, i) => { const w = colWidth(c); els[i].style.width = w + "px"; total += w; });
+  const widths = renderedWidths(cols, room);
+  widths.forEach((w, i) => { els[i].style.width = w + "px"; });
+  const total = widths.reduce((a, b) => a + b, 0);
   $("#page-library table").style.minWidth = total + "px";
-  const room = $(".table-wrap").parentElement.clientWidth;
-  if (room) $(".table-wrap").classList.toggle("scroll", total > room);   // room is 0 while the Library tab is hidden
+  if (room) $(".table-wrap").classList.toggle("scroll", total > room);
 }
 
 function renderColumns() {
@@ -1027,7 +1050,11 @@ headRow.addEventListener("pointerdown", (e) => {
   try { grip.setPointerCapture(e.pointerId); } catch {}
   grip.classList.add("active");
   document.body.classList.add("col-resizing");
-  const move = (ev) => { layout.widths[col.id] = Math.min(1200, Math.max(col.min, Math.round(startW + ev.clientX - startX))); updateWidths(); };
+  const move = (ev) => {
+    const target = Math.max(col.min, Math.round(startW + ev.clientX - startX));
+    layout.widths[col.id] = Math.min(1200, storedFor(col, target));
+    updateWidths();
+  };
   const stop = () => {
     grip.removeEventListener("pointermove", move);
     grip.removeEventListener("pointerup", stop);
