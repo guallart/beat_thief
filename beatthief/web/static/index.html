@@ -172,6 +172,20 @@
 
   .location { display: flex; gap: 8px; align-items: center; }
   .location input { flex: 1; font-family: var(--mono); }
+  /* Toasts: short status messages, bottom left (above the player when it is open) */
+  #toasts { position: fixed; left: 12px; bottom: 12px; z-index: 70; display: flex; flex-direction: column; gap: 8px; width: min(380px, calc(100vw - 24px)); pointer-events: none; }
+  body.has-player #toasts { bottom: 70px; }
+  .toast { pointer-events: auto; display: flex; align-items: flex-start; gap: 8px; padding: 10px 8px 10px 12px; background: var(--bg); border: 1px solid var(--border);
+    border-left: 4px solid var(--c, var(--accent)); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.22); font-size: 13px; animation: toast-in .18s ease-out; }
+  .toast.ok { --c: var(--success); }
+  .toast.error { --c: var(--danger); }
+  .toast.warn { --c: var(--attention); }
+  .toast .t-text { flex: 1; min-width: 0; max-height: 40vh; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .toast .t-close { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--fg-muted); font-size: 16px; line-height: 1; cursor: pointer; }
+  .toast .t-close:hover { background: var(--border-muted); color: var(--fg); }
+  .toast.leaving { opacity: 0; transform: translateX(-12px); transition: opacity .18s, transform .18s; }
+  @keyframes toast-in { from { opacity: 0; transform: translateX(-16px); } }
+  @media (prefers-reduced-motion: reduce) { .toast { animation: none; } .toast.leaving { transition: none; } }
   .msg { font-size: 12px; margin-top: 8px; display: none; white-space: pre-wrap; }
   .msg.error { color: var(--danger); }
   .msg.ok { color: var(--success); }
@@ -481,7 +495,6 @@
         <button class="btn sm primary" id="save-tags" disabled>Save changes</button>
       </div>
     </div>
-    <div class="box-body" id="tags-msg-wrap" style="padding:0 16px" hidden><div class="msg" id="tags-msg"></div></div>
     <div class="filter-bar" id="filter-bar" hidden></div>
     <div class="table-wrap">
       <table>
@@ -583,6 +596,8 @@
 
   <p class="hint">Settings are stored in <code>config.json</code> at the project root, and the command line reads the same file, so changes apply right away.</p>
 </main>
+
+<div id="toasts" aria-live="polite"></div>
 
 <div class="popover" id="filter-pop" hidden></div>
 
@@ -862,6 +877,43 @@ let savedDir = "";
 const locInputs = $$(".loc-input"), locSaves = $$(".loc-save"), locMsgs = $$(".loc-msg");
 function showMsg(el, text, kind) { el.textContent = text; el.className = "msg " + kind; el.style.display = text ? "block" : "none"; }
 const showLocMsg = (text, kind) => locMsgs.forEach((m) => showMsg(m, text, kind));
+
+/* Toasts. kind: "ok" | "error" | "warn" | "info". Errors stay until closed; the rest fade after a
+   few seconds (longer for longer text) and wait while the mouse is over them. */
+const toastBox = $("#toasts");
+function dismissToast(el, immediately = false) {
+  clearTimeout(el._timer);
+  if (immediately) return el.remove();
+  el.classList.add("leaving");
+  setTimeout(() => el.remove(), 200);
+}
+function toast(text, kind = "info") {
+  [...toastBox.children].filter((t) => t.dataset.text === text && t.dataset.kind === kind).forEach((t) => dismissToast(t, true));
+  const el = document.createElement("div");
+  el.className = `toast ${kind}`;
+  el.dataset.text = text;
+  el.dataset.kind = kind;
+  el.setAttribute("role", kind === "error" ? "alert" : "status");
+  const body = document.createElement("div");
+  body.className = "t-text";
+  body.textContent = text;
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "t-close";
+  close.setAttribute("aria-label", "Dismiss");
+  close.textContent = "×";
+  close.onclick = () => dismissToast(el);
+  el.append(body, close);
+  toastBox.append(el);
+  while (toastBox.children.length > 4) dismissToast(toastBox.firstElementChild, true);
+  if (kind === "error") return el;
+  let left = Math.min(12000, 4500 + text.length * 35), since = 0;
+  const start = () => { since = Date.now(); el._timer = setTimeout(() => dismissToast(el), left); };
+  el.addEventListener("mouseenter", () => { clearTimeout(el._timer); left -= Date.now() - since; });
+  el.addEventListener("mouseleave", () => start());
+  start();
+  return el;
+}
 function setDir(dir) {
   savedDir = dir;
   locInputs.forEach((i) => (i.value = dir));
@@ -1459,7 +1511,6 @@ async function saveTags() {
   const btn = $("#save-tags");
   btn.disabled = true;
   const payload = [...state.edits].map(([path, tags]) => ({ path, tags }));
-  const msg = $("#tags-msg"), wrap = $("#tags-msg-wrap");
   try {
     const results = await fetch("/api/tags", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ files: payload }) }).then((r) => r.json());
     const failed = [];
@@ -1472,17 +1523,15 @@ async function saveTags() {
         failed.push(`${r.path}: ${r.error}`);
       }
     }
-    wrap.hidden = false;
-    if (failed.length) showMsg(msg, `Some files could not be saved:\n${failed.join("\n")}`, "error");
-    else { showMsg(msg, `Saved ${results.length} file${results.length === 1 ? "" : "s"}.`, "ok"); setTimeout(() => { if (msg.classList.contains("ok")) wrap.hidden = true; }, 3000); }
+    if (failed.length) toast(`Some files could not be saved:\n${failed.join("\n")}`, "error");
+    else toast(`Saved ${results.length} file${results.length === 1 ? "" : "s"}.`, "ok");
   } catch {
-    wrap.hidden = false;
-    showMsg(msg, "Could not reach the server. Your changes are still here.", "error");
+    toast("Could not reach the server. Your changes are still here.", "error");
   }
   renderTags();
 }
 $("#save-tags").onclick = saveTags;
-$("#discard").onclick = () => { state.edits.clear(); $("#tags-msg-wrap").hidden = true; renderTags(); };
+$("#discard").onclick = () => { state.edits.clear(); renderTags(); };
 $("#refresh").onclick = loadFiles;
 $("#filter").addEventListener("input", () => { state.limit = PAGE; renderTags(); });
 $("#more-btn").onclick = () => { state.limit += PAGE; renderTags(); };
@@ -1549,7 +1598,7 @@ document.addEventListener("click", async (e) => {
     opener: del,
   }))) return;
   const res = await fetch(`/api/files/${urlPath(path)}`, { method: "DELETE" });
-  if (!res.ok) { showMsg($("#tags-msg"), `Could not delete ${path}.`, "error"); $("#tags-msg-wrap").hidden = false; return; }
+  if (!res.ok) { toast(`Could not delete ${path}.`, "error"); return; }
   state.edits.delete(path);
   if (playing === path) closePlayer();
   loadFiles();
@@ -1812,14 +1861,12 @@ async function analyze(paths, mode) {
   try {
     await fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paths }) });
   } catch {
-    showMsg($("#tags-msg"), "Could not reach the server.", "error");
-    $("#tags-msg-wrap").hidden = false;
+    toast("Could not reach the server.", "error");
     return;
   }
   paths.forEach((p) => state.analyzing.set(p, mode));
   state.analysisErrors = [];
   state.analysisBuiltin = false;
-  $("#tags-msg-wrap").hidden = true;
   renderTags();
   analysisTimer ??= setInterval(pollAnalysis, 1000);
 }
@@ -1847,11 +1894,10 @@ async function pollAnalysis() {
   if (state.analyzing.size) return;
   clearInterval(analysisTimer);
   analysisTimer = null;
-  $("#tags-msg-wrap").hidden = false;
   if (state.analysisErrors.length) {
-    showMsg($("#tags-msg"), `${state.analysisErrors.length} file(s) could not be analysed:\n${state.analysisErrors.join("\n")}`, "error");
+    toast(`${state.analysisErrors.length} file(s) could not be analysed:\n${state.analysisErrors.join("\n")}`, "error");
   } else {
-    showMsg($("#tags-msg"), "Analysis finished. Review the highlighted BPM and Key cells, then press Save changes."
+    toast("Analysis finished. Review the highlighted BPM and Key cells, then press Save changes."
       + (state.analysisBuiltin ? "\nThis system has no essentia, so a built-in estimator was used: the BPM is reliable, the key is a rougher guess, so double-check it." : ""), "ok");
   }
 }
