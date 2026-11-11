@@ -16,6 +16,8 @@ Everything in the download folder (and its subfolders) shows up in the **Library
 
 Edit any cell and it turns yellow until you save. `Enter` jumps to the row below, `Ctrl+S` saves everything. The same table works with files you didn't download here: WAV, AIFF, MP3, FLAC, OGG/Opus and M4A are all supported.
 
+**Filtering.** Next to the search box, the BPM, Year, Time, Added, Key and Genre columns have a small funnel in their header. BPM, Year and Time take a range ("BPM between 138 and 145"), so you don't need an exact match, and the panel shows the range your library covers. Added takes a from/to date, with shortcuts for today, the last 7 days and the last 30 days, which is handy to see only what you downloaded recently. Key and Genre show a checklist of the values you actually have, with how many tracks each one has, and they include a "(none)" option to find tracks that are missing the tag. Filters combine with each other and with the search box. A bar above the table shows how many tracks are left and one chip per active filter, and a click on a chip removes it. Filters look at what is saved in the files, so a row doesn't disappear while you are editing it.
+
 The table is yours to arrange: drag a column header to move it (a blue line shows where it will land), drag the right edge of a header to resize it (double-click to restore its width), and use the **Columns** button to show or hide columns. Clicking a header still sorts. The layout is remembered in your browser, and **Reset** in the Columns menu brings back the default.
 
 A few other things live in that table:

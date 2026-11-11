@@ -229,6 +229,28 @@
   th:hover .col-resizer::after { background: var(--fg-muted); }
   .col-resizer:hover::after, .col-resizer.active::after { background: var(--accent); top: 0; bottom: 0; }
   body.col-resizing { cursor: col-resize; user-select: none; }
+  .col-filter { display: inline-grid; place-items: center; width: 18px; height: 18px; margin-left: 3px; padding: 0; vertical-align: -3px;
+    border: 0; border-radius: 4px; background: none; color: var(--fg-muted); opacity: .35; cursor: pointer; }
+  th:hover .col-filter, .col-filter:focus-visible { opacity: 1; }
+  .col-filter:hover { background: var(--border-muted); color: var(--fg); }
+  .col-filter.on { opacity: 1; color: var(--accent); background: var(--accent-bg); }
+  #filter-pop { position: fixed; top: 0; left: 0; min-width: 210px; }
+  .range-row { display: flex; align-items: center; gap: 8px; padding: 2px 6px 8px; color: var(--fg-muted); }
+  .range-row .text-input { width: 84px; }
+  .date-grid { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 6px 10px; padding: 2px 6px 8px; color: var(--fg-muted); }
+  .date-grid .text-input { width: 100%; min-width: 150px; font-family: var(--sans); }
+  .preset-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 6px 8px; }
+  .pop-list { max-height: 260px; overflow-y: auto; }
+  .pop-list .count { margin-left: auto; padding-left: 12px; font-size: 12px; color: var(--fg-muted); }
+  .filter-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 8px 16px; border-bottom: 1px solid var(--border-muted); background: var(--accent-bg); font-size: 12px; }
+  .filter-bar[hidden] { display: none; }
+  .filter-bar .fb-count { font-weight: 600; margin-right: 4px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid var(--accent); border-radius: 2em; background: var(--bg); color: var(--fg); font: inherit; cursor: pointer; }
+  .chip:hover { border-color: var(--danger); color: var(--danger); }
+  .chip .x { font-size: 14px; line-height: 1; color: var(--fg-muted); }
+  .chip:hover .x { color: var(--danger); }
+  .filter-bar .link { margin-left: auto; background: none; border: 0; color: var(--accent); cursor: pointer; font: inherit; }
+  .filter-bar .link:hover { text-decoration: underline; }
   th.dragging { opacity: .4; }
   th.drop-before { box-shadow: inset 3px 0 0 var(--accent); }
   th.drop-after { box-shadow: inset -3px 0 0 var(--accent); }
@@ -409,6 +431,7 @@
       </div>
     </div>
     <div class="box-body" id="tags-msg-wrap" style="padding:0 16px" hidden><div class="msg" id="tags-msg"></div></div>
+    <div class="filter-bar" id="filter-bar" hidden></div>
     <div class="table-wrap">
       <table>
         <colgroup id="cols"></colgroup>
@@ -510,6 +533,8 @@
   <p class="hint">Settings are stored in <code>config.json</code> at the project root, and the command line reads the same file, so changes apply right away.</p>
 </main>
 
+<div class="popover" id="filter-pop" hidden></div>
+
 <div class="player" id="player" hidden>
   <div class="player-inner">
     <button class="btn sm" id="p-toggle" aria-label="Play / pause"></button>
@@ -543,6 +568,7 @@ const ICON_DEL = '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M11 1
 const ICON_PLAY = '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M4 2.5v11l9-5.5-9-5.5Z"/></svg>';
 const ICON_PAUSE = '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M4 2h3v12H4V2Zm5 0h3v12H9V2Z"/></svg>';
 const ICON_ANALYZE = '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M3 9.5a.75.75 0 0 1 1.5 0v-3a.75.75 0 0 1-1.5 0v3Zm2.9 2V4.5a.75.75 0 0 1 1.5 0v7a.75.75 0 0 1-1.5 0Zm2.9-1.5V6a.75.75 0 0 1 1.5 0v4a.75.75 0 0 1-1.5 0Zm2.9-1V7a.75.75 0 0 1 1.5 0v2a.75.75 0 0 1-1.5 0Z"/></svg>';
+const ICON_FILTER = '<svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2h14l-5.5 6.6V14l-3-1.5V8.6L1 2Z"/></svg>';
 const ICON_NOTE = '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M13 1.5a.75.75 0 0 0-.9-.73l-7 1.5A.75.75 0 0 0 4.5 3v7.2A2.5 2.5 0 1 0 6 12.5V5.6l5.5-1.18v4.78A2.5 2.5 0 1 0 13 11.5V1.5Z"/></svg>';
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -846,7 +872,7 @@ locSaves.forEach((b) => (b.onclick = saveLocation));
 
 /* ---------------------------------------------------------------- Tag editor */
 const PAGE = 200;
-const state = { files: [], edits: new Map(), analyzing: new Map(), analysisErrors: [], sort: { key: "modified", dir: -1 }, limit: PAGE };
+const state = { files: [], edits: new Map(), analyzing: new Map(), analysisErrors: [], filters: {}, sort: { key: "modified", dir: -1 }, limit: PAGE };
 
 const sortValue = (f, key) => {
   if (FIELDS.includes(key)) {
@@ -861,16 +887,16 @@ const sortValue = (f, key) => {
    remembered in this browser's localStorage. */
 const COLS = [
   { id: "cover", fixed: "start", width: 48, label: "" },
-  { id: "title", label: "Title", sort: "title", width: 200, min: 100, field: true, locked: true },
-  { id: "artist", label: "Artist", sort: "artist", width: 124, min: 60, field: true },
-  { id: "album", label: "Album", sort: "album", width: 112, min: 60, field: true },
-  { id: "year", label: "Year", sort: "year", width: 60, min: 44, field: true, mono: true },
-  { id: "genre", label: "Genre", sort: "genre", width: 116, min: 60, field: true },
-  { id: "bpm", label: "BPM", sort: "bpm", width: 58, min: 44, field: true, mono: true },
-  { id: "key", label: "Key", sort: "key", width: 54, min: 44, field: true, mono: true },
-  { id: "comment", label: "Comment", sort: "comment", width: 104, min: 60, field: true },
-  { id: "duration", label: "Time", name: "Duration", sort: "duration", width: 54, min: 44 },
-  { id: "modified", label: "Added", name: "Date added", sort: "modified", width: 92, min: 70 },
+  { id: "title", label: "Title", sort: "title", width: 160, min: 100, field: true, locked: true },
+  { id: "artist", label: "Artist", sort: "artist", width: 116, min: 60, field: true },
+  { id: "album", label: "Album", sort: "album", width: 104, min: 60, field: true },
+  { id: "year", label: "Year", sort: "year", filter: true, width: 74, min: 66, field: true, mono: true },
+  { id: "genre", label: "Genre", sort: "genre", filter: true, width: 116, min: 76, field: true },
+  { id: "bpm", label: "BPM", sort: "bpm", filter: true, width: 72, min: 64, field: true, mono: true },
+  { id: "key", label: "Key", sort: "key", filter: true, width: 68, min: 60, field: true, mono: true },
+  { id: "comment", label: "Comment", sort: "comment", width: 96, min: 60, field: true },
+  { id: "duration", label: "Time", name: "Duration", sort: "duration", filter: true, width: 70, min: 62 },
+  { id: "modified", label: "Added", name: "Date added", sort: "modified", filter: true, width: 104, min: 90 },
   { id: "actions", fixed: "end", width: 142, label: "" },
 ];
 const colById = (id) => COLS.find((c) => c.id === id);
@@ -936,8 +962,9 @@ function renderColumns() {
     const attrs = [`data-col="${c.id}"`];
     if (c.sort) attrs.push(`class="sortable" data-sort="${c.sort}"`);
     if (!c.fixed) attrs.push('draggable="true"', 'title="Click to sort · drag to move · drag the right edge to resize"');
+    const funnel = c.filter ? `<button type="button" class="col-filter" data-filter="${c.id}" title="Filter by ${esc(c.label)}" aria-label="Filter by ${esc(c.label)}">${ICON_FILTER}</button>` : "";
     const grip = c.fixed ? "" : '<span class="col-resizer" title="Drag to resize · double-click to reset"></span>';
-    return `<th ${attrs.join(" ")}>${esc(c.label)}${grip}</th>`;
+    return `<th ${attrs.join(" ")}>${esc(c.label)}${funnel}${grip}</th>`;
   }).join("") + '<th class="filler"></th>';
   updateWidths();
 }
@@ -1037,12 +1064,172 @@ colsMenu.addEventListener("change", (e) => {
   applyLayout();
 });
 colsMenu.addEventListener("click", (e) => { if (e.target.id === "cols-reset") { resetLayout(); buildColsMenu(); } });
-document.addEventListener("click", (e) => { if (!colsMenu.hidden && !e.target.closest(".menu-wrap")) toggleColsMenu(false); });
+document.addEventListener("click", (e) => { if (!colsMenu.hidden && !e.composedPath().includes(colsMenu) && !e.target.closest("#cols-btn")) toggleColsMenu(false); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !colsMenu.hidden) { toggleColsMenu(false); colsBtn.focus(); } });
 window.addEventListener("resize", updateWidths);
 
 loadLayout();
 renderColumns();
+
+/* ---------------------------------------------------------------- Column filters
+   Ranges (BPM, Year, Time) and value lists (Key, Genre). They look at what is saved on disk, not
+   at pending edits, so a row doesn't vanish while you are typing in one of its cells. */
+const splitValues = (s) => { const v = String(s || "").split(/\s*\/\s*/).map((x) => x.trim()).filter(Boolean); return v.length ? v : [""]; };
+const FILTER_DEFS = {
+  bpm: { kind: "range", label: "BPM", value: (f) => parseFloat(f.tags.bpm), step: 1 },
+  year: { kind: "range", label: "Year", value: (f) => parseInt(f.tags.year, 10), step: 1 },
+  duration: { kind: "range", label: "Time", unit: "min", scale: 60, value: (f) => f.duration, step: 0.5 },
+  modified: { kind: "date", label: "Added", value: (f) => f.modified },
+  key: { kind: "set", label: "Key", values: (f) => splitValues(f.tags.key) },
+  genre: { kind: "set", label: "Genre", values: (f) => splitValues(f.tags.genre) },
+};
+
+// Dates are kept as "YYYY-MM-DD" (what <input type=date> gives) and compared in local time.
+const localISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const dayStart = (iso) => { const [y, m, day] = iso.split("-").map(Number); return new Date(y, m - 1, day).getTime() / 1000; };
+const dayLabel = (iso) => new Date(dayStart(iso) * 1000).toLocaleDateString([], { dateStyle: "medium" });
+
+function passesFilters(f) {
+  for (const [id, flt] of Object.entries(state.filters)) {
+    const d = FILTER_DEFS[id];
+    if (d.kind === "date") {
+      const t = d.value(f);
+      if (flt.min != null && t < dayStart(flt.min)) return false;
+      if (flt.max != null && t >= dayStart(flt.max) + 86400) return false;   // "to" includes the whole day
+    } else if (d.kind === "range") {
+      const v = d.value(f) / (d.scale || 1);
+      if (!Number.isFinite(v) || (flt.min != null && v < flt.min) || (flt.max != null && v > flt.max)) return false;
+    } else if (!d.values(f).some((x) => flt.has(x))) return false;
+  }
+  return true;
+}
+
+function setFilter(id, value) {
+  const empty = !value || (value instanceof Set ? !value.size : value.min == null && value.max == null);
+  if (empty) delete state.filters[id]; else state.filters[id] = value;
+  state.limit = PAGE;
+  renderTags();
+}
+
+function filterChip(id) {
+  const d = FILTER_DEFS[id], flt = state.filters[id], u = d.unit ? " " + d.unit : "";
+  if (d.kind === "set") {
+    const names = [...flt].map((v) => v || "(none)");
+    return `${d.label}: ${names.slice(0, 3).join(", ")}${names.length > 3 ? ` +${names.length - 3}` : ""}`;
+  }
+  if (d.kind === "date") {
+    if (flt.min != null && flt.max != null) return flt.min === flt.max ? `${d.label} ${dayLabel(flt.min)}` : `${d.label} ${dayLabel(flt.min)} – ${dayLabel(flt.max)}`;
+    return flt.min != null ? `${d.label} from ${dayLabel(flt.min)}` : `${d.label} until ${dayLabel(flt.max)}`;
+  }
+  if (flt.min != null && flt.max != null) return `${d.label} ${flt.min}–${flt.max}${u}`;
+  return flt.min != null ? `${d.label} ≥ ${flt.min}${u}` : `${d.label} ≤ ${flt.max}${u}`;
+}
+
+function syncFilterUi(shownCount) {
+  $$(".col-filter").forEach((b) => b.classList.toggle("on", b.dataset.filter in state.filters));
+  const ids = Object.keys(state.filters), bar = $("#filter-bar");
+  bar.hidden = !ids.length;
+  if (!ids.length) return;
+  bar.innerHTML = `<span class="fb-count">${shownCount} of ${state.files.length} tracks</span>`
+    + ids.map((id) => `<button class="chip" data-unfilter="${id}" title="Remove this filter">${esc(filterChip(id))} <span class="x">×</span></button>`).join("")
+    + '<button class="link" id="filters-clear">Clear all filters</button>';
+}
+$("#filter-bar").addEventListener("click", (e) => {
+  const chip = e.target.closest("[data-unfilter]");
+  if (chip) { setFilter(chip.dataset.unfilter, null); closeFilterPop(); }
+  if (e.target.id === "filters-clear") { state.filters = {}; state.limit = PAGE; closeFilterPop(); renderTags(); }
+});
+
+// --- the panel that opens from a header's funnel
+const filterPop = $("#filter-pop");
+let filterOpen = null;
+
+function buildFilterPop(id) {
+  const d = FILTER_DEFS[id], flt = state.filters[id];
+  if (d.kind === "date") {
+    const ts = state.files.map(d.value);
+    const span = ts.length ? `Your library: ${dayLabel(localISO(new Date(Math.min(...ts) * 1000)))} – ${dayLabel(localISO(new Date(Math.max(...ts) * 1000)))}` : "No files yet";
+    filterPop.innerHTML = `<div class="pop-title">${esc(d.label)} between</div>
+      <div class="date-grid">
+        <span>From</span><input class="text-input" type="date" data-bound="min" value="${flt?.min ?? ""}" aria-label="Added from">
+        <span>To</span><input class="text-input" type="date" data-bound="max" value="${flt?.max ?? ""}" aria-label="Added until">
+      </div>
+      <div class="preset-row">
+        <button class="btn sm" data-days="0">Today</button>
+        <button class="btn sm" data-days="7">Last 7 days</button>
+        <button class="btn sm" data-days="30">Last 30 days</button>
+      </div>
+      <div class="pop-foot"><span>${span}</span><button class="btn sm" data-clear>Clear</button></div>`;
+  } else if (d.kind === "range") {
+    const vals = state.files.map((f) => d.value(f) / (d.scale || 1)).filter(Number.isFinite);
+    const lo = vals.length ? Math.floor(Math.min(...vals)) : "", hi = vals.length ? Math.ceil(Math.max(...vals)) : "";
+    const u = d.unit ? ` ${d.unit}` : "";
+    filterPop.innerHTML = `<div class="pop-title">${esc(d.label)} between</div>
+      <div class="range-row">
+        <input class="text-input" type="number" data-bound="min" step="${d.step}" placeholder="${lo}" value="${flt?.min ?? ""}" aria-label="Minimum ${esc(d.label)}">
+        <span>and</span>
+        <input class="text-input" type="number" data-bound="max" step="${d.step}" placeholder="${hi}" value="${flt?.max ?? ""}" aria-label="Maximum ${esc(d.label)}">
+      </div>
+      <div class="pop-foot"><span>${vals.length ? `Your library: ${lo}–${hi}${u}` : "No values yet"}</span><button class="btn sm" data-clear>Clear</button></div>`;
+  } else {
+    const counts = new Map();
+    state.files.forEach((f) => d.values(f).forEach((v) => counts.set(v, (counts.get(v) || 0) + 1)));
+    const keyOrder = (v) => { const m = /^(\d+)([AB])$/i.exec(v); return m ? [+m[1], m[2].toUpperCase()] : [99, v]; };
+    const items = [...counts].sort(id === "key"
+      ? ([a], [b]) => { const x = keyOrder(a), y = keyOrder(b); return x[0] - y[0] || String(x[1]).localeCompare(y[1]); }
+      : ([a, x], [b, y]) => y - x || a.localeCompare(b));
+    filterPop.innerHTML = `<div class="pop-title">${esc(d.label)} is any of</div>
+      <div class="pop-list">${items.map(([v, n]) => `<label><input type="checkbox" data-val="${esc(v)}" ${flt?.has(v) ? "checked" : ""}> ${v ? esc(v) : "<em>(none)</em>"}<span class="count">${n}</span></label>`).join("") || "<div class='hint' style='padding:4px 6px'>No values yet</div>"}</div>
+      <div class="pop-foot"><span></span><button class="btn sm" data-clear>Clear</button></div>`;
+  }
+}
+function closeFilterPop() { filterPop.hidden = true; filterOpen = null; }
+function toggleFilterPop(id, btn) {
+  if (filterOpen === id && !filterPop.hidden) return closeFilterPop();
+  filterOpen = id;
+  buildFilterPop(id);
+  filterPop.hidden = false;
+  const r = btn.getBoundingClientRect(), w = filterPop.offsetWidth;
+  filterPop.style.left = Math.max(8, Math.min(r.left - 8, window.innerWidth - w - 8)) + "px";
+  filterPop.style.top = r.bottom + 6 + "px";
+  filterPop.querySelector("input[type=number]")?.focus();   // dates: no autofocus, it would pop the calendar open
+}
+filterPop.addEventListener("input", (e) => {
+  if (!e.target.dataset.bound) return;
+  const cur = { ...(state.filters[filterOpen] || { min: null, max: null }) };
+  cur[e.target.dataset.bound] = e.target.value === "" ? null : FILTER_DEFS[filterOpen].kind === "date" ? e.target.value : parseFloat(e.target.value);
+  setFilter(filterOpen, cur);
+});
+filterPop.addEventListener("change", (e) => {
+  if (e.target.dataset.bound) {                       // typed min > max: swap them
+    const f = state.filters[filterOpen];
+    if (f && f.min != null && f.max != null && f.min > f.max) {
+      setFilter(filterOpen, { min: f.max, max: f.min });
+      buildFilterPop(filterOpen);
+    }
+  } else if (e.target.dataset.val !== undefined) {
+    const set = new Set(state.filters[filterOpen] || []);
+    e.target.checked ? set.add(e.target.dataset.val) : set.delete(e.target.dataset.val);
+    setFilter(filterOpen, set);
+  }
+});
+filterPop.addEventListener("click", (e) => {
+  const preset = e.target.closest("[data-days]");
+  if (preset) {
+    const from = new Date(); from.setDate(from.getDate() - Number(preset.dataset.days));
+    setFilter(filterOpen, { min: localISO(from), max: null });
+    buildFilterPop(filterOpen);
+    return;
+  }
+  if (e.target.closest("[data-clear]")) { setFilter(filterOpen, null); buildFilterPop(filterOpen); }
+});
+document.addEventListener("click", (e) => {
+  // composedPath(), not e.target.closest(): a click on a button that rebuilt the panel leaves e.target detached.
+  if (!filterPop.hidden && !e.composedPath().includes(filterPop) && !e.target.closest(".col-filter")) closeFilterPop();
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !filterPop.hidden) closeFilterPop(); });
+window.addEventListener("resize", closeFilterPop);
+window.addEventListener("scroll", (e) => { if (!filterPop.hidden && !filterPop.contains(e.target)) closeFilterPop(); }, true);
 
 function visibleFiles() {
   const q = $("#filter").value.trim().toLowerCase();
@@ -1050,6 +1237,7 @@ function visibleFiles() {
   if (q) {
     list = list.filter((f) => [f.name, ...FIELDS.map((k) => f.tags[k])].some((v) => String(v).toLowerCase().includes(q)));
   }
+  if (Object.keys(state.filters).length) list = list.filter(passesFilters);
   const { key, dir } = state.sort;
   return [...list].sort((a, b) => {
     const x = sortValue(a, key), y = sortValue(b, key);
@@ -1094,6 +1282,7 @@ function renderTags() {
   const missing = all.filter((f) => (!shownValue(f, "bpm") || !shownValue(f, "key")) && !state.analyzing.has(f.path));
   $("#analyze-missing").textContent = `Analyze missing (${missing.length})`;
   $("#analyze-missing").disabled = !missing.length;
+  syncFilterUi(all.length);
   updateDirty();
   markPlaying();
   if (keep) {
@@ -1189,6 +1378,8 @@ $("#more-btn").onclick = () => { state.limit += PAGE; renderTags(); };
 
 $("#head-row").addEventListener("click", (e) => {
   if (e.target.closest(".col-resizer")) return;
+  const funnel = e.target.closest(".col-filter");
+  if (funnel) return toggleFilterPop(funnel.dataset.filter, funnel);
   const th = e.target.closest("th[data-sort]");
   if (!th) return;
   const key = th.dataset.sort;
