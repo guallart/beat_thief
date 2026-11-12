@@ -427,6 +427,12 @@
   .field label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
   .field .text-input { width: 100%; font-family: var(--mono); }
   .field .hint { margin-top: 4px; }
+  details.box > summary { cursor: pointer; list-style: none; }
+  details.box > summary::-webkit-details-marker { display: none; }
+  details.box > summary::before { content: "\25B8"; width: 10px; color: var(--fg-muted); }
+  details.box[open] > summary::before { content: "\25BE"; }
+  details.box:not([open]) > summary { border-bottom: 0; }
+  .limit-brief { margin-left: auto; font-weight: 400; }
   .limit-summary { margin-top: 12px; font-size: 13px; }
   .limit-summary.warn { color: var(--attention); }
   @media (max-width: 700px) { .setting { flex-direction: column; gap: 12px; } .setting-text, .setting-control { max-width: none; width: 100%; } }
@@ -561,11 +567,11 @@
 
 <main id="page-settings" hidden>
   <section class="box">
-    <div class="box-header">Storage</div>
+    <div class="box-header">General</div>
     <div class="setting">
       <div class="setting-text">
         <label for="settings-folder">Download folder</label>
-        <div class="hint">Where new tracks are saved. The Library tab lists every audio file in this folder and its subfolders.</div>
+        <div class="hint">Where new tracks are saved. The Library lists everything in it.</div>
       </div>
       <div class="setting-control">
         <div class="location">
@@ -575,26 +581,45 @@
         <div class="msg loc-msg"></div>
       </div>
     </div>
-  </section>
-
-  <section class="box">
-    <div class="box-header">Downloads</div>
     <div class="setting">
       <div class="setting-text">
         <label for="default-format">Default format</label>
-        <div class="hint">Used for new downloads from the web UI and the command line. You can still pick another format per download.</div>
+        <div class="hint">For new downloads. You can still pick another one each time.</div>
       </div>
       <div class="setting-control">
         <select class="text-input" id="default-format"></select>
         <div class="msg" id="format-msg"></div>
       </div>
     </div>
+    <div class="setting">
+      <div class="setting-text">
+        <label for="theme-select">Theme</label>
+        <div class="hint">Saved in this browser only.</div>
+      </div>
+      <div class="setting-control">
+        <select class="text-input" id="theme-select">
+          <option value="">Match system</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </div>
+    </div>
+    <div class="setting">
+      <div class="setting-text">
+        <label for="verbose-toggle">Verbose logging</label>
+        <div class="hint">Prints detailed logs to the console. Turn it on when something fails.</div>
+      </div>
+      <div class="setting-control">
+        <input type="checkbox" id="verbose-toggle">
+        <div class="msg" id="verbose-msg"></div>
+      </div>
+    </div>
   </section>
 
-  <section class="box">
-    <div class="box-header">Rate limit</div>
+  <details class="box">
+    <summary class="box-header">Rate limit <span class="hint limit-brief" id="limit-brief"></span></summary>
     <div class="box-body">
-      <div class="hint">Keeps heavy use from getting your IP blocked (HTTP 429). It is applied to each platform separately. Waiting downloads show a countdown in the queue.</div>
+      <div class="hint">Keeps heavy use from getting your IP blocked. Applied to each platform separately.</div>
       <div class="limits-grid">
         <div class="field">
           <label for="lim-min_gap">Minimum wait (seconds)</label>
@@ -624,38 +649,7 @@
       </div>
       <div class="msg" id="limits-msg"></div>
     </div>
-  </section>
-
-  <section class="box">
-    <div class="box-header">Appearance</div>
-    <div class="setting">
-      <div class="setting-text">
-        <label for="theme-select">Theme</label>
-        <div class="hint">Saved in this browser only.</div>
-      </div>
-      <div class="setting-control">
-        <select class="text-input" id="theme-select">
-          <option value="">Match system</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-        </select>
-      </div>
-    </div>
-  </section>
-
-  <section class="box">
-    <div class="box-header">Troubleshooting</div>
-    <div class="setting">
-      <div class="setting-text">
-        <label for="verbose-toggle">Verbose logging</label>
-        <div class="hint">Prints detailed logs (every download, ffmpeg and yt-dlp's debug output) to the console where BeatThief is running. Turn it on when something fails and you need to see why.</div>
-      </div>
-      <div class="setting-control">
-        <input type="checkbox" id="verbose-toggle">
-        <div class="msg" id="verbose-msg"></div>
-      </div>
-    </div>
-  </section>
+  </details>
 
   <p class="hint">Settings are stored in <code>config.json</code> at the project root, and the command line reads the same file, so changes apply right away.</p>
 </main>
@@ -1044,6 +1038,7 @@ function applySettings(s) {
   $("#limits-save").disabled = true;
   $("#limits-reset").disabled = JSON.stringify(l) === JSON.stringify(s.rate_limit_defaults);
   $("#footer-limit").textContent = `${l.max_per_window} / ${minutes(l.window)} min`;
+  $("#limit-brief").textContent = `${l.max_per_window} downloads / ${minutes(l.window)} min`;
   updateLimitSummary();
 }
 async function loadSettings() {
