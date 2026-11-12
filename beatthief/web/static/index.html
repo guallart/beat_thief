@@ -227,6 +227,13 @@
   @keyframes slide { from { margin-left: -30%; } to { margin-left: 100%; } }
   .err-text { color: var(--danger); font-size: 12px; margin-top: 2px; font-family: var(--mono); white-space: pre-wrap; word-break: break-word; }
 
+  /* Convert tab */
+  .dropzone {
+    display: flex; align-items: center; justify-content: center; text-align: center; min-height: 96px; padding: 16px;
+    border: 1px dashed var(--border); border-radius: 6px; color: var(--fg-muted); cursor: pointer;
+  }
+  .dropzone:hover, .dropzone:focus-visible, .dropzone.drag { border-color: var(--accent); background: var(--accent-bg); color: var(--fg); outline: none; }
+
   /* Library toolbar + table */
   .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 400; }
   .toolbar .title { font-weight: 600; }
@@ -444,6 +451,7 @@
   <nav class="tabs" role="tablist">
     <button class="tab active" role="tab" data-tab="download">Download</button>
     <button class="tab" role="tab" data-tab="library">Library <span class="counter" id="tab-count">0</span></button>
+    <button class="tab" role="tab" data-tab="convert">Convert</button>
     <button class="tab" role="tab" data-tab="settings">Settings</button>
   </nav>
 </div>
@@ -526,6 +534,29 @@
 </main>
 
 <!-- ================= Settings ================= -->
+<!-- ================= Convert ================= -->
+<main id="page-convert" hidden>
+  <p class="intro">Convert audio files to another format. Pick the format, then drop your files. Tags and cover art are kept, and the result is saved in the download folder.</p>
+
+  <section class="box">
+    <div class="box-header">Convert to
+      <select class="text-input" id="convert-format" aria-label="Target format"></select>
+    </div>
+    <div class="box-body">
+      <div class="dropzone" id="convert-drop" tabindex="0" role="button">Drop audio files here, or click to choose</div>
+      <input type="file" id="convert-input" accept="audio/*,.wav,.aif,.aiff,.mp3,.flac,.ogg,.opus,.m4a,.aac,.wma,.mp4" multiple hidden>
+    </div>
+  </section>
+
+  <section class="box" id="convert-box" hidden>
+    <div class="box-header">Conversions <span class="counter" id="convert-count">0</span>
+      <span class="spacer"></span>
+      <button class="btn sm" id="convert-clear" hidden>Dismiss all</button>
+    </div>
+    <div id="convert-list"></div>
+  </section>
+</main>
+
 <main id="page-settings" hidden>
   <section class="box">
     <div class="box-header">Storage</div>
@@ -724,10 +755,11 @@ $("#theme-select").onchange = (e) => {
 
 /* ---------------------------------------------------------------- Tabs */
 function showTab(name, updateHash = true) {
-  if (!["library", "settings"].includes(name)) name = "download";
+  if (!["library", "convert", "settings"].includes(name)) name = "download";
   $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
   $("#page-download").hidden = name !== "download";
   $("#page-library").hidden = name !== "library";
+  $("#page-convert").hidden = name !== "convert";
   $("#page-settings").hidden = name !== "settings";
   if (updateHash) history.replaceState(null, "", "#" + name);
   if (name === "library") loadFiles();
@@ -1980,6 +2012,87 @@ document.addEventListener("click", (e) => {
   if (play) return playFile(play.dataset.play);
   const an = e.target.closest("[data-analyze]");
   if (an) analyze([an.dataset.analyze], "force");
+});
+
+/* ---------------------------------------------------------------- Convert page */
+const conversions = [];     // [{ id, file, format, status: queued|converting|done|error, name, path, error }]
+let convertBusy = false;
+
+fetch("/api/convert/formats").then((r) => r.json()).then((f) => {
+  $("#convert-format").innerHTML = Object.entries(f).map(([k, label]) => `<option value="${k}">${esc(label)}</option>`).join("");
+  try { const last = localStorage.getItem("convert-format"); if (last in f) $("#convert-format").value = last; } catch {}
+}).catch(() => {});
+$("#convert-format").onchange = (e) => { try { localStorage.setItem("convert-format", e.target.value); } catch {} };
+
+function renderConversions() {
+  $("#convert-box").hidden = !conversions.length;
+  $("#convert-count").textContent = conversions.length;
+  $("#convert-clear").hidden = !conversions.some((c) => c.status === "done" || c.status === "error");
+  $("#convert-list").innerHTML = conversions.map((c, i) => {
+    const finished = c.status === "done" || c.status === "error";
+    const bar = c.status === "converting" ? `<div class="progress indeterminate"><div></div></div>` : "";
+    const title = c.status === "done" ? c.name : c.file.name;
+    return `
+      <div class="row">
+        <div class="row-main">
+          <div class="row-title">${esc(title)}</div>
+          <div class="row-meta"><span class="src">${esc(c.format)}</span><span>${fmtSize(c.status === "done" ? c.size : c.file.size)}</span></div>
+          ${c.error ? `<div class="err-text">${esc(c.error)}</div>` : ""}
+          ${bar}
+        </div>
+        <span class="badge ${c.status === "converting" ? "converting" : c.status}">${STATUS[c.status]}</span>
+        <div class="row-actions">
+          ${c.status === "done" ? `<a class="btn sm" href="/files/${urlPath(c.path)}">Save</a>` : ""}
+          ${finished ? `<button class="btn sm" data-convert-dismiss="${i}">Dismiss</button>` : ""}
+        </div>
+      </div>`;
+  }).join("");
+}
+
+async function runConversions() {
+  if (convertBusy) return;
+  convertBusy = true;
+  for (let c; (c = conversions.find((x) => x.status === "queued")); ) {
+    c.status = "converting";
+    renderConversions();
+    try {
+      const body = new FormData();
+      body.append("file", c.file);
+      body.append("format", c.format);
+      const res = await fetch("/api/convert", { method: "POST", body });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Conversion failed.");
+      Object.assign(c, data, { status: "done" });
+    } catch (e) {
+      Object.assign(c, { status: "error", error: e.message });
+    }
+    renderConversions();
+  }
+  convertBusy = false;
+  fetch("/api/files").then((r) => r.json()).then((f) => { $("#tab-count").textContent = f.length; }).catch(() => {});
+}
+
+function addConversions(files) {
+  const format = $("#convert-format").value;
+  for (const file of files) conversions.push({ file, format, status: "queued" });
+  renderConversions();
+  runConversions();
+}
+
+const drop = $("#convert-drop"), pick = $("#convert-input");
+drop.onclick = () => pick.click();
+drop.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick.click(); } };
+pick.onchange = () => { addConversions([...pick.files]); pick.value = ""; };
+["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("drag"); }));
+["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, () => drop.classList.remove("drag")));
+drop.addEventListener("drop", (e) => { e.preventDefault(); addConversions([...e.dataTransfer.files]); });
+$("#convert-clear").onclick = () => {
+  for (let i = conversions.length - 1; i >= 0; i--) if (["done", "error"].includes(conversions[i].status)) conversions.splice(i, 1);
+  renderConversions();
+};
+$("#convert-list").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-convert-dismiss]");
+  if (b) { conversions.splice(+b.dataset.convertDismiss, 1); renderConversions(); }
 });
 
 /* ---------------------------------------------------------------- Init */

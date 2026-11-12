@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from flask import Flask, Response, abort, jsonify, request, send_from_directory
 
-from .. import analysis, config, downloader, tagging, throttle, updater, waveform
+from .. import analysis, config, converter, downloader, tagging, throttle, updater, waveform
 from ..sources import validate_and_clean_url
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -195,6 +195,26 @@ def update_settings():
     if "rate_limit" in data:  # null / empty resets to the defaults
         config.set_setting("rate_limit", limits)
     return jsonify(_settings_payload())
+
+
+@app.get("/api/convert/formats")
+def convert_formats():
+    return jsonify({k: label for k, (label, _) in converter.FORMATS.items()})
+
+
+@app.post("/api/convert")
+def convert_file():
+    """Multipart form: file + format. Converts into the download folder and returns the new file's path."""
+    upload = request.files.get("file")
+    audio_format = request.form.get("format", "")
+    if not upload or audio_format not in converter.FORMATS:
+        return jsonify({"error": "Choose a file and a format."}), 400
+    try:
+        with tag_write_lock:  # nothing else writes tags to files at the same moment
+            path = converter.convert(upload, upload.filename or "audio", audio_format)
+    except Exception as e:
+        return jsonify({"error": str(e) or "Conversion failed."}), 422
+    return jsonify({"path": path.relative_to(_base_dir()).as_posix(), "name": path.name, "size": path.stat().st_size})
 
 
 @app.get("/api/files")

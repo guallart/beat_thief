@@ -35,6 +35,10 @@ There's a dark theme as well, which follows your system or can be set by hand.
 
 </details>
 
+## Convert
+
+The **Convert** tab turns audio files into another format with FFmpeg (WAV, AIFF, FLAC, MP3, M4A, OGG or Opus). Pick the target format, drop your files and they convert one after another. Tags are kept (and cover art, where the format allows it), and the result lands in the download folder, so it shows up in the Library.
+
 ## Settings
 
 The download folder, default format, rate limits and theme all live in one place. The folder defaults to `~/Music/Unclassified`.
