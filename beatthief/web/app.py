@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, Response, abort, jsonify, request, send_from_directory
 
 from .. import analysis, config, converter, downloader, tagging, throttle, updater, waveform
-from ..sources import validate_and_clean_url
+from ..sources import is_playlist, validate_and_clean_url
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -114,8 +114,22 @@ def index():
     return send_from_directory(STATIC_DIR, "index.html")
 
 
+def _enqueue(url, source, audio_format, title=None):
+    job_id = uuid.uuid4().hex[:10]
+    with jobs_lock:
+        jobs[job_id] = {
+            "id": job_id, "url": url, "source": source, "format": audio_format, "status": "queued",
+            "progress": 0, "cooldown": 0, "title": title, "files": [], "error": None,
+            "created": time.time(),
+        }
+    executors[source].submit(_run_job, job_id)
+    return job_id
+
+
 @app.post("/api/jobs")
 def create_jobs():
+    """Body: {"urls": [...], "format": ...}. A playlist link is split into one job per track; they run
+    one after another through the rate limiter, exactly like tracks pasted one by one."""
     data = request.get_json(silent=True) or {}
     audio_format = data.get("format") or downloader.default_format()
     if audio_format not in downloader.FORMATS:
@@ -126,15 +140,19 @@ def create_jobs():
         if not ok:
             results.append({"input": raw, "error": value})
             continue
-        job_id = uuid.uuid4().hex[:10]
-        with jobs_lock:
-            jobs[job_id] = {
-                "id": job_id, "url": value, "source": source, "format": audio_format, "status": "queued",
-                "progress": 0, "cooldown": 0, "title": None, "files": [], "error": None,
-                "created": time.time(),
-            }
-        executors[source].submit(_run_job, job_id)
-        results.append({"input": raw, "id": job_id})
+        if not is_playlist(value):
+            results.append({"input": raw, "id": _enqueue(value, source, audio_format)})
+            continue
+        try:
+            tracks = downloader.list_playlist(value, source)
+        except Exception as e:
+            results.append({"input": raw, "error": str(e).replace("ERROR: ", "").strip() or "Could not read the playlist."})
+            continue
+        if not tracks:
+            results.append({"input": raw, "error": "The playlist is empty or not available."})
+            continue
+        ids = [_enqueue(t["url"], source, audio_format, t["title"]) for t in tracks]
+        results.append({"input": raw, "id": ids[0], "count": len(ids)})
     return jsonify(results), 202
 
 

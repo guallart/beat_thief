@@ -6,7 +6,7 @@ BeatThief downloads audio from YouTube and SoundCloud, converts it to WAV (or FL
 
 ## Features
 
-- **Download** — paste one or more links, pick a format and go. YouTube and SoundCloud each have their own rate limit, so extra links wait in the queue instead of getting your IP blocked.
+- **Download** — paste one or more links, pick a format and go. A playlist link is split into its tracks; a video link that also has a playlist downloads just that video. YouTube and SoundCloud each have their own rate limit, so extra tracks wait in the queue instead of getting your IP blocked.
 - **Library** — every audio file in the download folder in an editable table: tags, cover art, BPM and key detection, filters, an audio player with waveform and a three-band equalizer. WAV, AIFF, MP3, FLAC, OGG/Opus and M4A are supported.
 - **Convert** — drop audio files and convert them to another format with FFmpeg. Tags are kept and the result lands in the library.
 - **Settings** — download folder, default format, rate limits and theme. Saved in `config.json`, shared with the command line.

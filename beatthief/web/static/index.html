@@ -458,7 +458,7 @@
 
 <!-- ================= Download ================= -->
 <main id="page-download">
-  <p class="intro">Download audio from YouTube and SoundCloud as WAV, FLAC, MP3 or M4A, tagged automatically with title, artist, year, genre and cover art. Paste one or many links, separated by lines, spaces or commas.</p>
+  <p class="intro">Download audio from YouTube and SoundCloud as WAV, FLAC, MP3 or M4A, tagged automatically with title, artist, year, genre and cover art. Paste one or many links, separated by lines, spaces or commas. A playlist link is split into its tracks, which download one by one.</p>
 
   <section class="box">
     <div class="box-header">New download</div>
@@ -846,6 +846,7 @@ async function submit() {
   try {
     const res = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ urls: valid, format: $("#format").value }) });
     const results = await res.json();
+    results.filter((r) => r.count > 1).forEach((r) => toast(`Playlist split into ${r.count} tracks, queued one by one.`, "ok"));
     const failed = results.filter((r) => r.error);
     const failedSet = new Set(failed.map((r) => r.input));
     // Keep failed + invalid ones in the list, drop the ones queued OK

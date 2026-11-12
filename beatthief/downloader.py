@@ -20,6 +20,28 @@ def default_format() -> str:
     return fmt if fmt in FORMATS else AUDIO_FORMAT
 
 
+MAX_PLAYLIST = 500  # tracks taken from one playlist
+
+
+def list_playlist(url: str, source: str):
+    """Break a playlist (or SoundCloud set) into its tracks without downloading anything.
+    Returns [{"url": ..., "title": ...}]. Raises on failure."""
+    opts = {"extract_flat": "in_playlist", "skip_download": True, "quiet": True, "no_warnings": True,
+            "playlistend": MAX_PLAYLIST}
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+    tracks = []
+    for entry in filter(None, (info or {}).get("entries") or []):
+        title = entry.get("title")
+        if title in ("[Private video]", "[Deleted video]"):
+            continue
+        link = f"https://www.youtube.com/watch?v={entry['id']}" if source == "youtube" and entry.get("id") \
+            else entry.get("url") or entry.get("webpage_url")
+        if link:
+            tracks.append({"url": link, "title": title})
+    return tracks
+
+
 def _build_opts(workdir: str, playlist: bool, audio_format: str, on_progress=None):
     opts = {
         "format": "bestaudio/best",

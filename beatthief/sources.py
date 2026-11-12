@@ -53,8 +53,30 @@ def _soundcloud_track_id(url: str):
     return None
 
 
+def _youtube_playlist_id(url: str):
+    """The playlist id of a pure playlist link (/playlist?list=...). A watch link that also carries
+    a list is a single video (the one being played), not a playlist."""
+    parsed = urlparse(url)
+    if parsed.path.rstrip("/") == "/playlist":
+        return parse_qs(parsed.query).get("list", [None])[0]
+    return None
+
+
+def is_playlist(url: str) -> bool:
+    """True for links that stand for several tracks: a YouTube playlist or a SoundCloud set."""
+    source = detect_source(url)
+    if source == "youtube":
+        return _youtube_playlist_id(url) is not None
+    if source == "soundcloud":
+        parts = [p for p in urlparse(url).path.split("/") if p]
+        return len(parts) == 3 and parts[1] == "sets"
+    return False
+
+
 def validate_and_clean_url(user_input: str):
-    """Return (ok, url_or_error_message, source, item_id)."""
+    """Return (ok, url_or_error_message, source, item_id).
+
+    A YouTube watch link that also has a playlist (watch?v=X&list=Y) is reduced to the video X."""
     url = extract_url(user_input)
     if not url:
         return False, "I couldn't find a link in your message.", None, None
@@ -64,9 +86,15 @@ def validate_and_clean_url(user_input: str):
         return False, "Unsupported link. Send a YouTube or SoundCloud URL.", None, None
 
     if source == "youtube":
+        item_id = _youtube_playlist_id(url)
+        if item_id:
+            return True, url, source, item_id
         item_id = _youtube_video_id(url)
         if not item_id:
             return False, "Could not extract the video ID. Check that the URL is correct.", None, None
+        parsed = urlparse(url)
+        if parsed.path == "/watch" or (parsed.hostname or "").endswith("youtu.be"):
+            url = f"https://www.youtube.com/watch?v={item_id}"   # drops list=, index=, start_radio=...
     else:
         item_id = _soundcloud_track_id(url)
         if not item_id:
