@@ -497,6 +497,7 @@
 
   <section class="box">
     <div class="box-header">Queue <span class="counter" id="jobs-count">0</span>
+      <span class="hint" id="queue-eta"></span>
       <span class="spacer"></span>
       <button class="btn sm" id="dismiss-all" style="display:none">Dismiss all</button>
     </div>
@@ -897,8 +898,30 @@ async function submit() {
 }
 $("#submit").onclick = submit;
 
+// Rough time left for everything in the queue. The platforms run in parallel, so the slowest one decides.
+// One track takes about as long as the recent ones did (25 s until there is data), but never less than the
+// gap the rate limiter leaves between two downloads. A long queue also has to wait for the rate limit window.
+let rateLimit = null;
+function queueEta(jobs) {
+  const pending = jobs.filter((j) => ["queued", "cooldown", "downloading", "converting"].includes(j.status));
+  if (!pending.length || !rateLimit) return "";
+  const took = jobs.filter((j) => j.took).slice(0, 10).map((j) => j.took);
+  const work = took.length ? took.reduce((a, b) => a + b, 0) / took.length : 25;
+  const per = Math.max(work, rateLimit.min_gap + rateLimit.jitter / 2);
+  let secs = 0;
+  for (const source of new Set(pending.map((j) => j.source))) {
+    const n = pending.filter((j) => j.source === source).length;
+    const batches = Math.ceil(n / rateLimit.max_per_window);
+    secs = Math.max(secs, n * per, (batches - 1) * rateLimit.window + per);
+  }
+  const mins = Math.round(secs / 60);
+  const left = secs < 90 ? "about a minute" : mins < 60 ? `about ${mins} min` : `about ${Math.floor(mins / 60)} h ${String(mins % 60).padStart(2, "0")} min`;
+  return `${pending.length} pending · ${left} left`;
+}
+
 function renderJobs(jobs) {
   $("#jobs-count").textContent = jobs.length;
+  $("#queue-eta").textContent = queueEta(jobs);
   $("#dismiss-all").style.display = jobs.some((j) => ["done", "error", "cancelled"].includes(j.status)) ? "" : "none";
   const cooling = jobs.filter((j) => j.status === "cooldown");
   const notice = $("#cooldown-notice");
@@ -1032,6 +1055,7 @@ function applySettings(s) {
   $("#verbose-toggle").checked = !!s.verbose;
 
   const l = s.rate_limit;
+  rateLimit = l;
   limitInputs.forEach((i) => (i.value = i.dataset.key === "window" ? minutes(l.window) : l[i.dataset.key]));
   savedLimits = JSON.stringify(readLimits());
   $("#limits-save").disabled = true;

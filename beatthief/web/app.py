@@ -68,8 +68,12 @@ def _run_job(job_id, run):
         else:
             _update(job_id, run, status="downloading", cooldown=0)
 
+    started = []  # when the real work began (after any cooldown), to estimate how long the queue will take
+
     def on_progress(stage, pct, title):
         _check_cancelled(job_id, run)
+        if not started:
+            started.append(time.time())
         fields = {"status": stage}
         if pct is not None:
             fields["progress"] = round(pct, 1)
@@ -89,6 +93,7 @@ def _run_job(job_id, run):
                     pass
             return
         _update(job_id, run, status="done", progress=100,
+                took=round(time.time() - started[0], 1) if started else None,
                 files=[os.path.basename(p) for p in paths],
                 title=os.path.splitext(os.path.basename(paths[0]))[0])
     except Exception as e:
@@ -162,7 +167,7 @@ def _enqueue(url, source, audio_format, title=None):
         jobs[job_id] = {
             "id": job_id, "url": url, "source": source, "format": audio_format, "status": "queued",
             "progress": 0, "cooldown": 0, "title": title, "files": [], "error": None,
-            "created": time.time(), "run": 0,
+            "created": time.time(), "run": 0, "took": None,
         }
     executors[source].submit(_run_job, job_id, 0)
     return job_id
@@ -237,7 +242,7 @@ def retry_job(job_id):
             return jsonify({"error": DUPLICATE}), 409
         log.info("Job %s: retry", job_id)
         job["run"] += 1
-        job.update(status="queued", progress=0, cooldown=0, error=None)
+        job.update(status="queued", progress=0, cooldown=0, error=None, took=None)
         run, source = job["run"], job["source"]
     executors[source].submit(_run_job, job_id, run)
     return "", 204
