@@ -12,7 +12,7 @@ import yt_dlp
 from flask import Flask, Response, abort, jsonify, request, send_from_directory
 
 from .. import log as logging_setup
-from ..log import log, verbose
+from ..log import clean_error, log, verbose
 from .. import analysis, config, converter, downloader, tagging, throttle, updater, waveform
 from ..sources import is_playlist, validate_and_clean_url
 
@@ -92,7 +92,7 @@ def _run_job(job_id, run):
                 files=[os.path.basename(p) for p in paths],
                 title=os.path.splitext(os.path.basename(paths[0]))[0])
     except Exception as e:
-        message = str(e).replace("ERROR: ", "").strip() or "Download failed."
+        message = clean_error(e, "Download failed.")
         if isinstance(e, yt_dlp.utils.DownloadCancelled):
             log.info("Job %s cancelled", job_id)
         else:
@@ -190,7 +190,7 @@ def create_jobs():
             tracks = downloader.list_playlist(value, source)
         except Exception as e:
             log.error("Could not read the playlist %s: %s", value, e, exc_info=verbose())
-            results.append({"input": raw, "error": str(e).replace("ERROR: ", "").strip() or "Could not read the playlist."})
+            results.append({"input": raw, "error": clean_error(e, "Could not read the playlist.")})
             continue
         if not tracks:
             results.append({"input": raw, "error": "The playlist is empty or not available."})

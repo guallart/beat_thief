@@ -27,7 +27,7 @@ MAX_PLAYLIST = 500  # tracks taken from one playlist
 def list_playlist(url: str, source: str):
     """Break a playlist (or SoundCloud set) into its tracks without downloading anything.
     Returns [{"url": ..., "title": ...}]. Raises on failure."""
-    opts = {"extract_flat": "in_playlist", "skip_download": True, "quiet": True, "no_warnings": True,
+    opts = {"extract_flat": "in_playlist", "skip_download": True, "quiet": True, "no_warnings": True, "color": "no_color",
             "playlistend": MAX_PLAYLIST}
     if verbose():
         opts.update({"verbose": True, "logger": YtdlpLogger(), "no_warnings": False})
@@ -62,6 +62,7 @@ def _build_opts(workdir: str, playlist: bool, audio_format: str, on_progress=Non
         "noplaylist": not playlist,
         "ignoreerrors": playlist,  # skip unavailable entries inside playlists
         "quiet": True,
+        "color": "no_color",  # error messages end up in the web UI: no terminal colour codes
         "noprogress": True,
         "no_warnings": True,
         "sleep_interval_requests": 1,  # be gentle with the platform's API

@@ -5,6 +5,7 @@ import importlib.util
 import logging
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,15 @@ from . import config
 log = logging.getLogger("beatthief")
 _verbose = False
 _console = None
+
+
+_ANSI = re.compile(r"(?:\x1b)?\[[0-9;]*m")   # terminal colour codes (the escape character is invisible in a web page)
+
+
+def clean_error(error, default: str) -> str:
+    """Text of an exception for the UI: no colour codes, no "ERROR:" prefix."""
+    text = _ANSI.sub("", str(error)).replace("ERROR: ", "").strip()
+    return text or default
 
 
 def verbose() -> bool:
