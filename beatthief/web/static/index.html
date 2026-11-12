@@ -772,14 +772,34 @@ $$(".tab").forEach((t) => (t.onclick = () => showTab(t.dataset.tab)));
 const links = [];           // [{ url, bad }]
 const URL_RE = /^https?:\/\/\S+$/i;
 
+let queueJobs = [];         // last known jobs, to spot links that are already in the queue
+
+// Same video or track written in different ways (watch?v=X&list=..., youtu.be/X, ...) gives the same key.
+function linkKey(url) {
+  try {
+    const u = new URL(url), host = u.hostname.toLowerCase().replace(/^www\./, "");
+    if (/(^|\.)youtube(-nocookie)?\.com$/.test(host) || host === "youtu.be") {
+      const list = u.searchParams.get("list");
+      if (u.pathname.replace(/\/$/, "") === "/playlist" && list) return "yt-list:" + list;
+      const id = host === "youtu.be" ? u.pathname.slice(1)
+        : /^\/(shorts|live|embed)\//.test(u.pathname) ? u.pathname.split("/")[2] : u.searchParams.get("v");
+      if (id) return "yt:" + id;
+    }
+    return host + u.pathname.replace(/\/$/, "").toLowerCase();
+  } catch { return url; }
+}
+
 function addLinks(text) {
   const tokens = text.split(/[\s,;]+/).map((t) => t.trim()).filter(Boolean);
-  let added = 0;
+  const queued = new Set(queueJobs.filter((j) => !["error", "cancelled"].includes(j.status)).map((j) => linkKey(j.url)));
+  let added = 0, skipped = 0;
   for (const t of tokens) {
-    if (links.some((l) => l.url === t)) continue;
+    const key = linkKey(t);
+    if (queued.has(key) || links.some((l) => linkKey(l.url) === key)) { skipped++; continue; }
     links.push({ url: t, bad: !URL_RE.test(t) });
     added++;
   }
+  if (skipped) toast(skipped === 1 ? "That link is already in the list or the queue." : `${skipped} links skipped: already in the list or the queue.`, "warn");
   if (added) renderLinks();
   return added;
 }
@@ -848,7 +868,8 @@ async function submit() {
   try {
     const res = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ urls: valid, format: $("#format").value }) });
     const results = await res.json();
-    results.filter((r) => r.count > 1).forEach((r) => toast(`Playlist split into ${r.count} tracks, queued one by one.`, "ok"));
+    results.filter((r) => r.count > 1 || r.skipped).forEach((r) => toast(
+      `Playlist split into ${r.count} tracks, queued one by one.` + (r.skipped ? ` ${r.skipped} already in the queue were skipped.` : ""), "ok"));
     const failed = results.filter((r) => r.error);
     const failedSet = new Set(failed.map((r) => r.input));
     // Keep failed + invalid ones in the list, drop the ones queued OK
@@ -926,7 +947,7 @@ document.addEventListener("click", async (e) => {
 });
 
 async function refreshJobs() {
-  try { renderJobs(await fetch("/api/jobs").then((r) => r.json())); } catch {}
+  try { queueJobs = await fetch("/api/jobs").then((r) => r.json()); renderJobs(queueJobs); } catch {}
 }
 
 /* ---------------------------------------------------------------- Library folder */

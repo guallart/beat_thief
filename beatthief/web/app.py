@@ -26,6 +26,7 @@ executors = {
 
 jobs = {}  # id -> job dict
 FINISHED = ("done", "error", "cancelled")
+DUPLICATE = "Already in the queue (dismiss it there to add it again)."
 jobs_lock = threading.Lock()
 
 
@@ -142,8 +143,12 @@ def index():
 
 
 def _enqueue(url, source, audio_format, title=None):
+    """Add a job and return its id, or None if the same link is already in the queue (waiting, running or
+    finished and not dismissed yet). Failed and cancelled ones don't count, so they can be retried."""
     job_id = uuid.uuid4().hex[:10]
     with jobs_lock:
+        if any(j["url"] == url and j["status"] not in ("error", "cancelled") for j in jobs.values()):
+            return None
         jobs[job_id] = {
             "id": job_id, "url": url, "source": source, "format": audio_format, "status": "queued",
             "progress": 0, "cooldown": 0, "title": title, "files": [], "error": None,
@@ -168,7 +173,8 @@ def create_jobs():
             results.append({"input": raw, "error": value})
             continue
         if not is_playlist(value):
-            results.append({"input": raw, "id": _enqueue(value, source, audio_format)})
+            job_id = _enqueue(value, source, audio_format)
+            results.append({"input": raw, "id": job_id} if job_id else {"input": raw, "error": DUPLICATE})
             continue
         try:
             tracks = downloader.list_playlist(value, source)
@@ -178,8 +184,11 @@ def create_jobs():
         if not tracks:
             results.append({"input": raw, "error": "The playlist is empty or not available."})
             continue
-        ids = [_enqueue(t["url"], source, audio_format, t["title"]) for t in tracks]
-        results.append({"input": raw, "id": ids[0], "count": len(ids)})
+        ids = [i for i in (_enqueue(t["url"], source, audio_format, t["title"]) for t in tracks) if i]
+        if not ids:
+            results.append({"input": raw, "error": "All the tracks of this playlist are already in the queue."})
+        else:
+            results.append({"input": raw, "id": ids[0], "count": len(ids), "skipped": len(tracks) - len(ids)})
     return jsonify(results), 202
 
 
