@@ -30,64 +30,66 @@ DUPLICATE = "Already in the queue (dismiss it there to add it again)."
 jobs_lock = threading.Lock()
 
 
-def _update(job_id, **fields):
-    """Change a job. A cancelled (or dismissed) job no longer changes."""
+def _update(job_id, run, **fields):
+    """Change a job. Cancelled, dismissed or restarted (retried) jobs are left alone by the old run."""
     with jobs_lock:
         job = jobs.get(job_id)
-        if job is not None and job["status"] != "cancelled":
+        if job is not None and job["run"] == run and job["status"] != "cancelled":
             job.update(fields)
 
 
-def _check_cancelled(job_id):
+def _is_stale(job_id, run):
     with jobs_lock:
         job = jobs.get(job_id)
-        if job is None or job["status"] == "cancelled":
-            raise yt_dlp.utils.DownloadCancelled("Cancelled.")  # stops yt-dlp at its next progress update
+        return job is None or job["run"] != run or job["status"] == "cancelled"
 
 
-def _run_job(job_id):
+def _check_cancelled(job_id, run):
+    if _is_stale(job_id, run):
+        raise yt_dlp.utils.DownloadCancelled("Cancelled.")  # stops yt-dlp at its next progress update
+
+
+def _run_job(job_id, run):
     try:
-        _check_cancelled(job_id)  # cancelled while it was still waiting in the queue
+        _check_cancelled(job_id, run)  # cancelled while it was still waiting in the queue
     except yt_dlp.utils.DownloadCancelled:
         return
     with jobs_lock:
         url, audio_format = jobs[job_id]["url"], jobs[job_id]["format"]
-    _update(job_id, status="downloading", progress=0)
+    _update(job_id, run, status="downloading", progress=0)
 
     def on_wait(seconds_left):
-        _check_cancelled(job_id)
+        _check_cancelled(job_id, run)
         if seconds_left > 0:
-            _update(job_id, status="cooldown", cooldown=round(seconds_left))
+            _update(job_id, run, status="cooldown", cooldown=round(seconds_left))
         else:
-            _update(job_id, status="downloading", cooldown=0)
+            _update(job_id, run, status="downloading", cooldown=0)
 
     def on_progress(stage, pct, title):
-        _check_cancelled(job_id)
+        _check_cancelled(job_id, run)
         fields = {"status": stage}
         if pct is not None:
             fields["progress"] = round(pct, 1)
         if title:
             fields["title"] = title
-        _update(job_id, **fields)
+        _update(job_id, run, **fields)
 
     try:
         paths = downloader.fetch_audio(url, on_progress=on_progress, on_wait=on_wait,
                                           audio_format=audio_format)
-        with jobs_lock:
-            cancelled = job_id not in jobs or jobs[job_id]["status"] == "cancelled"
-        if cancelled:  # cancelled while converting: that step can't be interrupted, so remove its result
+        if _is_stale(job_id, run):  # cancelled while converting: that step can't be interrupted, so remove its result
             for p in paths:
                 try:
                     os.unlink(p)
                 except OSError:
                     pass
             return
-        _update(job_id, status="done", progress=100,
+        _update(job_id, run, status="done", progress=100,
                 files=[os.path.basename(p) for p in paths],
                 title=os.path.splitext(os.path.basename(paths[0]))[0])
     except Exception as e:
         message = str(e).replace("ERROR: ", "").strip() or "Download failed."
-        _update(job_id, status="error", error=message)
+        _update(job_id, run, status="error", error=message)
 
 
 MAX_FILES = 5000
@@ -152,9 +154,9 @@ def _enqueue(url, source, audio_format, title=None):
         jobs[job_id] = {
             "id": job_id, "url": url, "source": source, "format": audio_format, "status": "queued",
             "progress": 0, "cooldown": 0, "title": title, "files": [], "error": None,
-            "created": time.time(),
+            "created": time.time(), "run": 0,
         }
-    executors[source].submit(_run_job, job_id)
+    executors[source].submit(_run_job, job_id, 0)
     return job_id
 
 
@@ -212,6 +214,22 @@ def dismiss_job(job_id):
         job = jobs.get(job_id)
         if job and job["status"] in FINISHED:
             del jobs[job_id]
+    return "", 204
+
+
+@app.post("/api/jobs/<job_id>/retry")
+def retry_job(job_id):
+    """Queue a failed or cancelled job again (unless the same link was added again in the meantime)."""
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if not job or job["status"] not in ("error", "cancelled"):
+            return "", 204
+        if any(j is not job and j["url"] == job["url"] and j["status"] not in ("error", "cancelled") for j in jobs.values()):
+            return jsonify({"error": DUPLICATE}), 409
+        job["run"] += 1
+        job.update(status="queued", progress=0, cooldown=0, error=None)
+        run, source = job["run"], job["source"]
+    executors[source].submit(_run_job, job_id, run)
     return "", 204
 
 

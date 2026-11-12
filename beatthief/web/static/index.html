@@ -914,8 +914,10 @@ function renderJobs(jobs) {
       ? `<button class="btn sm" data-edit-tags="${esc(j.files[0] || "")}">Edit tags</button>` +
         j.files.map((f) => `<a class="btn sm" href="/files/${urlPath(f)}">Save</a>`).join("")
       : "";
+    const retry = j.status === "error" || j.status === "cancelled"
+      ? `<button class="btn sm" data-retry="${j.id}">Retry</button>` : "";
     const dismiss = ["done", "error", "cancelled"].includes(j.status)
-      ? `<button class="btn sm" data-dismiss="${j.id}">Dismiss</button>`
+      ? `${retry}<button class="btn sm" data-dismiss="${j.id}">Dismiss</button>`
       : `<button class="btn sm cancel" data-cancel="${j.id}" title="Cancel" aria-label="Cancel">&times;</button>`;
     return `
       <div class="row">
@@ -934,6 +936,14 @@ function renderJobs(jobs) {
 $("#dismiss-all").onclick = async () => { await fetch("/api/jobs", { method: "DELETE" }); refreshJobs(); };
 
 document.addEventListener("click", async (e) => {
+  const r = e.target.closest("[data-retry]");
+  if (r) {
+    r.disabled = true;
+    const res = await fetch(`/api/jobs/${r.dataset.retry}/retry`, { method: "POST" });
+    if (res.status === 409) toast((await res.json().catch(() => ({}))).error || "Already in the queue.", "warn");
+    refreshJobs();
+    return;
+  }
   const c = e.target.closest("[data-cancel]");
   if (c) { c.disabled = true; await fetch(`/api/jobs/${c.dataset.cancel}/cancel`, { method: "POST" }); refreshJobs(); return; }
   const d = e.target.closest("[data-dismiss]");
