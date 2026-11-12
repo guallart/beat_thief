@@ -2,50 +2,16 @@
 
 BeatThief downloads audio from YouTube and SoundCloud, converts it to WAV (or FLAC, MP3, M4A), fills in the tags and gives you a small library to tidy everything up afterwards. It has a local web interface and a command line, both built on top of [yt-dlp](https://github.com/yt-dlp/yt-dlp).
 
-It is aimed at building a music library: tracks land in one inbox folder, already tagged, and you clean them up and listen to them before they go anywhere else.
-
 ![Download tab](docs/screenshots/download.png)
 
-On the **Download** tab you paste one or more links, pick a format and hit Download. Each link becomes an entry in the queue with its progress. YouTube and SoundCloud each have their own rate limit, so if you throw a lot of links at it, the extra ones wait and the queue shows a countdown instead of getting your IP blocked.
+## Features
 
-## The library
-
-Everything in the download folder (and its subfolders) shows up in the **Library** tab as an editable table. The tags are written when the file is downloaded, using whatever the platform gives us: title, artist, album, year, genre, cover art, and the source URL in the comment field. YouTube titles are messy, so `Artist - Title (Official Video) [HD]` gets cleaned up by a few rules; they're not perfect, which is why everything is editable.
+- **Download** — paste one or more links, pick a format and go. YouTube and SoundCloud each have their own rate limit, so extra links wait in the queue instead of getting your IP blocked.
+- **Library** — every audio file in the download folder in an editable table: tags, cover art, BPM and key detection, filters, an audio player with waveform and a three-band equalizer. WAV, AIFF, MP3, FLAC, OGG/Opus and M4A are supported.
+- **Convert** — drop audio files and convert them to another format with FFmpeg. Tags are kept and the result lands in the library.
+- **Settings** — download folder, default format, rate limits and theme. Saved in `config.json`, shared with the command line.
 
 ![Library tab](docs/screenshots/library.png)
-
-Edit any cell and it turns yellow until you save. `Enter` jumps to the row below, `Ctrl+S` saves everything. The same table works with files you didn't download here: WAV, AIFF, MP3, FLAC, OGG/Opus and M4A are all supported.
-
-**Filtering.** Next to the search box, the BPM, Year, Time, Added, Key and Genre columns have a small funnel in their header. BPM, Year and Time take a range ("BPM between 138 and 145"), so you don't need an exact match, and the panel shows the range your library covers. Added takes a from/to date, with shortcuts for today, the last 7 days and the last 30 days, which is handy to see only what you downloaded recently. Key and Genre show a checklist of the values you actually have, with how many tracks each one has, and they include a "(none)" option to find tracks that are missing the tag. Filters combine with each other and with the search box. A bar above the table shows how many tracks are left and one chip per active filter, and a click on a chip removes it. Filters look at what is saved in the files, so a row doesn't disappear while you are editing it.
-
-The table is yours to arrange: drag a column header to move it (a blue line shows where it will land), drag the right edge of a header to resize it (double-click to restore its width), and use the **Columns** button to show or hide columns. Clicking a header still sorts. The layout is remembered in your browser, and **Reset** in the Columns menu brings back the default.
-
-A few other things live in that table:
-
-- The play button on each row opens a small player at the bottom of the page, so you can check a track before keeping it. Its progress bar is a waveform of the whole track split by frequency: red is bass, green is the mids (vocals, leads) and blue the highs (hats). You can see at a glance where the breaks are (the red disappears) and where the vocals come in, and click anywhere on it to jump there. Next to it there is a three-band equalizer built like the isolators on DJ mixers: three knobs in the same colours (red for the bass, green for the mids, blue for the highs) that split the sound at 250 Hz and 3 kHz, so each knob only touches its own band. At 12 o'clock it is perfectly flat, the top of a knob is +6 dB and the bottom is a full kill, so you can drop the bass out completely. Drag a knob up or down (hold Shift for fine adjustment), use the mouse wheel or arrow keys, double-click to reset it, and the setting is remembered. It only affects what you hear in the preview, never the files. Boosting a band lowers the overall output by the same amount so mastered tracks don't clip. AIFF files won't play in Chrome or Firefox, only in Safari.
-- The waveform button next to it detects the BPM and key of a track (in Camelot notation, like `8A`). **Analyze missing** does it for every visible row that has no BPM or key. The results are estimates and show up as unsaved changes, so you review them before they're written to the file. Expect the occasional double or half BPM.
-- Files can be downloaded or deleted from there too.
-
-There's a dark theme as well, which follows your system or can be set by hand.
-
-<details>
-<summary>Dark theme</summary>
-
-![Library tab, dark theme](docs/screenshots/library-dark.png)
-
-</details>
-
-## Convert
-
-The **Convert** tab turns audio files into another format with FFmpeg (WAV, AIFF, FLAC, MP3, M4A, OGG or Opus). Pick the target format, drop your files and they convert one after another. Tags are kept (and cover art, where the format allows it), and the result lands in the download folder, so it shows up in the Library.
-
-## Settings
-
-The download folder, default format, rate limits and theme all live in one place. The folder defaults to `~/Music/Unclassified`.
-
-![Settings tab](docs/screenshots/settings.png)
-
-Settings are saved in `config.json` at the project root, and the command line reads the same file, so a change here applies right away without restarting anything.
 
 ## Installing
 
@@ -63,84 +29,58 @@ powershell -ExecutionPolicy Bypass -File install.ps1     # Windows
 .\run.bat            # starts the web interface at http://127.0.0.1:8000
 ```
 
-Both launchers pass their arguments on, so `./run.sh download "<url>" --format flac` works too. If you'd rather do it by hand, here are the steps.
+Both launchers pass their arguments on, so `./run.sh download "<url>" --format flac` works too.
 
 ### Manual install
 
-You need Python and FFmpeg. Python 3.10 or newer should be fine (I've only run it on 3.14). FFmpeg does the conversion to WAV and the others, and has to be on your `PATH`.
+You need Python 3.10 or newer and FFmpeg (on your `PATH`). Everything Python-related goes into a virtual environment in `.venv`, so nothing is installed system-wide and deleting that folder removes it.
 
-Everything Python-related goes into a virtual environment in the `.venv` folder, so nothing is installed system-wide, and deleting that folder is all it takes to remove it.
-
-### Linux
-
-Install Python and FFmpeg with your package manager:
+**Linux**
 
 ```bash
 sudo apt install python3 python3-venv ffmpeg    # Debian, Ubuntu
 sudo dnf install python3 ffmpeg                 # Fedora
 sudo pacman -S python ffmpeg                    # Arch
-```
 
-Then, from the project folder:
-
-```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-### Windows
+**Windows**
 
-Install Python from [python.org](https://www.python.org/downloads/) (tick *Add python.exe to PATH* in the installer) and FFmpeg. The quickest way for FFmpeg is winget; open a new terminal afterwards so it picks up the `PATH`:
+Install Python from [python.org](https://www.python.org/downloads/) (tick *Add python.exe to PATH*), then FFmpeg with winget. Open a new terminal afterwards so it picks up the `PATH`.
 
 ```powershell
 winget install Gyan.FFmpeg
-ffmpeg -version
-```
 
-Then, from the project folder in PowerShell:
-
-```powershell
 py -m venv .venv
 .venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 ```
 
-If PowerShell refuses to run the activation script, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, or use `.venv\Scripts\activate.bat` from a regular Command Prompt. You can also skip activation entirely and call the venv's Python directly, like `.venv\Scripts\python -m beatthief web`.
+If PowerShell refuses to run the activation script, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, or skip activation and call the venv's Python directly (`.venv\Scripts\python -m beatthief web`).
 
-BPM and key detection uses [essentia](https://essentia.upf.edu/) when it is installed, which gives the best results, but essentia has no Windows build, so `requirements.txt` skips it there. Without it, BeatThief falls back to a built-in estimator that needs nothing beyond numpy, so the analyze buttons work on Windows too. On a library of techno it came out practically identical to essentia for the BPM (58 of 65 tracks within 1 BPM, none off by more than 4), but the key matched essentia exactly on only about half of the tracks (more if you count the relative or neighbouring key as a near miss): in dance music the kick and bass swamp the harmony, and that is hard for any simple method. The results are shown as pending edits, so you always review them before they are written, and the message after an analysis tells you when the fallback was used.
+BPM and key detection uses [essentia](https://essentia.upf.edu/) when available. It has no Windows build, so there BeatThief falls back to a built-in estimator that only needs numpy: the BPM is practically the same, the key is less reliable. Results are always shown as pending edits before anything is written.
 
 ## Running it
 
-Run these from the project folder, with the venv activated (`source .venv/bin/activate` on Linux, `.venv\Scripts\Activate.ps1` on Windows) or by calling the Python inside `.venv` directly.
-
-### Web interface
+Run these from the project folder, with the venv activated or by calling the Python inside `.venv` directly.
 
 ```bash
-python -m beatthief web
-```
-
-BeatThief opens <http://127.0.0.1:8000> in your default browser as soon as it is ready (add `--no-browser`, or set `BEATTHIEF_NO_BROWSER=1`, if you'd rather open it yourself; it also doesn't reopen after an automatic restart following an update). Use `--port` to change the port. By default it only listens on your own machine. `--host 0.0.0.0` makes it reachable from the rest of your network, but there is no login, so only do that on a network you trust.
-
-### Command line
-
-```bash
-python -m beatthief download "https://soundcloud.com/some-artist/some-track" --format flac
+python -m beatthief web                                            # web interface
+python -m beatthief download "https://soundcloud.com/..." --format flac
 python -m beatthief download "https://www.youtube.com/playlist?list=..." --playlist
 ```
 
-The formats are `wav` (the default), `flac`, `mp3` and `m4a`.
+The web interface opens <http://127.0.0.1:8000> in your browser (`--no-browser` or `BEATTHIEF_NO_BROWSER=1` to prevent it, `--port` to change the port). It only listens on your own machine; `--host 0.0.0.0` exposes it to your network, but there is no login, so only do that on a network you trust. Download formats are `wav` (default), `flac`, `mp3` and `m4a`.
 
 ## Updates
 
-If you cloned the repository, BeatThief tells you when there is something new. When the web interface starts it checks the git remote in the background; if there are new commits, a dialog lists their messages and asks whether to update. **Update and restart** runs `git pull --ff-only` (it never merges or overwrites your local changes: if they clash, it stops and shows git's message) and then restarts BeatThief by itself, installing the new requirements first when `requirements.txt` changed. **Not now** closes the dialog, and a small "N updates" button stays in the header in case you change your mind. The *Check for updates* link in the footer looks again without restarting.
-
-It works the same on Linux and Windows and needs the `git` command, which you already have if you cloned the repo. Starting the web interface with `python -m beatthief web` (or the `run.sh` / `run.bat` launchers) runs it under a small supervisor process, which is what makes the automatic restart possible. If the update would interrupt downloads in progress or unsaved tag edits, the dialog warns you first. To switch the check off, set the environment variable `BEATTHIEF_NO_UPDATE_CHECK=1`.
-
-If you also commit to your copy, an update can't be applied automatically (git can't fast-forward): the dialog says so and you update with git yourself.
+If you cloned the repository, the web interface checks the git remote when it starts and offers to update when there are new commits. **Update and restart** runs `git pull --ff-only` (it never overwrites your local changes) and restarts BeatThief, installing new requirements if needed. It needs the `git` command. Set `BEATTHIEF_NO_UPDATE_CHECK=1` to switch the check off.
 
 ## Good to know
 
-- WAV, FLAC and the like are lossless containers, but YouTube and SoundCloud serve compressed audio. Converting to WAV doesn't bring back any quality, it just stores what was there without compressing it again. If sound quality matters, buy the track.
-- The default rate limit is 20 downloads every 10 minutes per platform, with 5 to 10 seconds between them. That's on the cautious side, based on what's commonly recommended for yt-dlp, and you can change it in Settings.
+- YouTube and SoundCloud serve compressed audio. Converting to WAV or FLAC doesn't bring back any quality, it just stores what was there. If sound quality matters, buy the track.
+- The default rate limit is 20 downloads every 10 minutes per platform, with 5 to 10 seconds between them. You can change it in Settings.
 - Downloading from these sites may go against their terms of use and, depending on the track, copyright law. Use it for things you're allowed to download.
