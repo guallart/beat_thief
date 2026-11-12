@@ -8,6 +8,7 @@ import webbrowser
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
+import yt_dlp
 from flask import Flask, Response, abort, jsonify, request, send_from_directory
 
 from .. import analysis, config, converter, downloader, tagging, throttle, updater, waveform
@@ -24,26 +25,43 @@ executors = {
 }
 
 jobs = {}  # id -> job dict
+FINISHED = ("done", "error", "cancelled")
 jobs_lock = threading.Lock()
 
 
 def _update(job_id, **fields):
+    """Change a job. A cancelled (or dismissed) job no longer changes."""
     with jobs_lock:
-        jobs[job_id].update(fields)
+        job = jobs.get(job_id)
+        if job is not None and job["status"] != "cancelled":
+            job.update(fields)
+
+
+def _check_cancelled(job_id):
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if job is None or job["status"] == "cancelled":
+            raise yt_dlp.utils.DownloadCancelled("Cancelled.")  # stops yt-dlp at its next progress update
 
 
 def _run_job(job_id):
+    try:
+        _check_cancelled(job_id)  # cancelled while it was still waiting in the queue
+    except yt_dlp.utils.DownloadCancelled:
+        return
     with jobs_lock:
         url, audio_format = jobs[job_id]["url"], jobs[job_id]["format"]
     _update(job_id, status="downloading", progress=0)
 
     def on_wait(seconds_left):
+        _check_cancelled(job_id)
         if seconds_left > 0:
             _update(job_id, status="cooldown", cooldown=round(seconds_left))
         else:
             _update(job_id, status="downloading", cooldown=0)
 
     def on_progress(stage, pct, title):
+        _check_cancelled(job_id)
         fields = {"status": stage}
         if pct is not None:
             fields["progress"] = round(pct, 1)
@@ -54,6 +72,15 @@ def _run_job(job_id):
     try:
         paths = downloader.fetch_audio(url, on_progress=on_progress, on_wait=on_wait,
                                           audio_format=audio_format)
+        with jobs_lock:
+            cancelled = job_id not in jobs or jobs[job_id]["status"] == "cancelled"
+        if cancelled:  # cancelled while converting: that step can't be interrupted, so remove its result
+            for p in paths:
+                try:
+                    os.unlink(p)
+                except OSError:
+                    pass
+            return
         _update(job_id, status="done", progress=100,
                 files=[os.path.basename(p) for p in paths],
                 title=os.path.splitext(os.path.basename(paths[0]))[0])
@@ -165,7 +192,7 @@ def list_jobs():
 @app.delete("/api/jobs")
 def dismiss_finished_jobs():
     with jobs_lock:
-        for job_id in [i for i, j in jobs.items() if j["status"] in ("done", "error")]:
+        for job_id in [i for i, j in jobs.items() if j["status"] in FINISHED]:
             del jobs[job_id]
     return "", 204
 
@@ -174,8 +201,19 @@ def dismiss_finished_jobs():
 def dismiss_job(job_id):
     with jobs_lock:
         job = jobs.get(job_id)
-        if job and job["status"] in ("done", "error"):
+        if job and job["status"] in FINISHED:
             del jobs[job_id]
+    return "", 204
+
+
+@app.post("/api/jobs/<job_id>/cancel")
+def cancel_job(job_id):
+    """Cancel a job that is queued, waiting, downloading or converting. A running download stops at its
+    next progress update (a second at most)."""
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if job and job["status"] not in FINISHED:
+            job.update(status="cancelled", cooldown=0)
     return "", 204
 
 

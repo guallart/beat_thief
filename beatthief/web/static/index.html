@@ -215,6 +215,9 @@
   .badge.downloading, .badge.converting { color: var(--accent); background: var(--accent-bg); }
   .badge.done { color: var(--success); background: var(--success-bg); }
   .badge.error { color: var(--danger); background: var(--danger-bg); }
+  .badge.cancelled { color: var(--fg-muted); border-color: var(--border); }
+  .btn.cancel { width: 28px; padding: 0; justify-content: center; font-size: 17px; line-height: 1; color: var(--danger); }
+  .btn.cancel:hover { background: var(--danger-bg); border-color: var(--danger); }
   .src { font: 11px var(--mono); color: var(--fg-muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; }
 
   .notice {
@@ -708,7 +711,7 @@
 <script>
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
-const STATUS = { queued: "Queued", cooldown: "Cooldown", downloading: "Downloading", converting: "Converting", done: "Done", error: "Failed" };
+const STATUS = { cancelled: "Cancelled", queued: "Queued", cooldown: "Cooldown", downloading: "Downloading", converting: "Converting", done: "Done", error: "Failed" };
 const FIELDS = ["title", "artist", "album", "year", "genre", "bpm", "key", "comment"];
 const ICON_DL = '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M7.25 1.75a.75.75 0 0 1 1.5 0v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.22 2.22V1.75ZM2.75 12a.75.75 0 0 1 .75.75v.5c0 .14.11.25.25.25h8.5a.25.25 0 0 0 .25-.25v-.5a.75.75 0 0 1 1.5 0v.5A1.75 1.75 0 0 1 12.25 15h-8.5A1.75 1.75 0 0 1 2 13.25v-.5a.75.75 0 0 1 .75-.75Z"/></svg>';
 const ICON_DEL = '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75ZM4.496 6.675l.66 6.6a.25.25 0 0 0 .249.225h5.19a.25.25 0 0 0 .249-.225l.66-6.6a.75.75 0 0 1 1.492.149l-.66 6.6A1.748 1.748 0 0 1 10.595 15h-5.19a1.75 1.75 0 0 1-1.741-1.575l-.66-6.6a.75.75 0 1 1 1.492-.15ZM6.5 1.75V3h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25Z"/></svg>';
@@ -869,7 +872,7 @@ $("#submit").onclick = submit;
 
 function renderJobs(jobs) {
   $("#jobs-count").textContent = jobs.length;
-  $("#dismiss-all").style.display = jobs.some((j) => j.status === "done" || j.status === "error") ? "" : "none";
+  $("#dismiss-all").style.display = jobs.some((j) => ["done", "error", "cancelled"].includes(j.status)) ? "" : "none";
   const cooling = jobs.filter((j) => j.status === "cooldown");
   const notice = $("#cooldown-notice");
   if (cooling.length) {
@@ -891,8 +894,9 @@ function renderJobs(jobs) {
       ? `<button class="btn sm" data-edit-tags="${esc(j.files[0] || "")}">Edit tags</button>` +
         j.files.map((f) => `<a class="btn sm" href="/files/${urlPath(f)}">Save</a>`).join("")
       : "";
-    const dismiss = (j.status === "done" || j.status === "error")
-      ? `<button class="btn sm" data-dismiss="${j.id}">Dismiss</button>` : "";
+    const dismiss = ["done", "error", "cancelled"].includes(j.status)
+      ? `<button class="btn sm" data-dismiss="${j.id}">Dismiss</button>`
+      : `<button class="btn sm cancel" data-cancel="${j.id}" title="Cancel" aria-label="Cancel">&times;</button>`;
     return `
       <div class="row">
         <div class="row-main">
@@ -910,6 +914,8 @@ function renderJobs(jobs) {
 $("#dismiss-all").onclick = async () => { await fetch("/api/jobs", { method: "DELETE" }); refreshJobs(); };
 
 document.addEventListener("click", async (e) => {
+  const c = e.target.closest("[data-cancel]");
+  if (c) { c.disabled = true; await fetch(`/api/jobs/${c.dataset.cancel}/cancel`, { method: "POST" }); refreshJobs(); return; }
   const d = e.target.closest("[data-dismiss]");
   if (d) { await fetch(`/api/jobs/${d.dataset.dismiss}`, { method: "DELETE" }); refreshJobs(); return; }
   const edit = e.target.closest("[data-edit-tags]");
