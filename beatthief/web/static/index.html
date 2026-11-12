@@ -85,7 +85,6 @@
   }
   .tab:hover { background: var(--border-muted); border-radius: 6px 6px 0 0; }
   .tab.active { border-bottom-color: #fd8c73; font-weight: 600; }
-  .tab .counter { font-weight: 500; }
 
   main { max-width: var(--page-max); margin: 0 auto; padding: 16px var(--gutter) 40px; }
   .intro { margin: 0 0 14px; color: var(--fg-muted); }
@@ -453,7 +452,7 @@
 <div class="tabs-bar">
   <nav class="tabs" role="tablist">
     <button class="tab active" role="tab" data-tab="download">Download</button>
-    <button class="tab" role="tab" data-tab="library">Library <span class="counter" id="tab-count">0</span></button>
+    <button class="tab" role="tab" data-tab="library">Library</button>
     <button class="tab" role="tab" data-tab="convert">Convert</button>
     <button class="tab" role="tab" data-tab="settings">Settings</button>
   </nav>
@@ -1495,7 +1494,6 @@ function renderTags() {
   $("#more").hidden = all.length <= shown.length;
   $("#more-btn").textContent = `Show more (${all.length - shown.length} hidden)`;
   $("#files-count").textContent = state.files.length;
-  $("#tab-count").textContent = state.files.length;
   $$("th.sortable").forEach((th) => {
     const active = th.dataset.sort === state.sort.key;
     th.querySelector(".arrow")?.remove();
@@ -2076,7 +2074,6 @@ async function runConversions() {
     renderConversions();
   }
   convertBusy = false;
-  fetch("/api/files").then((r) => r.json()).then((f) => { $("#tab-count").textContent = f.length; }).catch(() => {});
 }
 
 function addConversions(files) {
@@ -2107,7 +2104,6 @@ loadSettings();
 refreshJobs();
 setInterval(refreshJobs, 1000);
 showTab(location.hash.slice(1), false);
-fetch("/api/files").then((r) => r.json()).then((f) => { $("#tab-count").textContent = f.length; }).catch(() => {});
 /* ---------------------------------------------------------------- Updates (git remote)
    The server fetches the remote when it starts. If there are new commits we list their messages
    and, on request, it pulls and restarts itself (see beatthief/updater.py). */
