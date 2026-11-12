@@ -75,6 +75,15 @@ python -m beatthief download "https://www.youtube.com/playlist?list=..." --playl
 
 The web interface opens <http://127.0.0.1:8000> in your browser (`--no-browser` or `BEATTHIEF_NO_BROWSER=1` to prevent it, `--port` to change the port). It only listens on your own machine; `--host 0.0.0.0` exposes it to your network, but there is no login, so only do that on a network you trust. Download formats are `wav` (default), `flac`, `mp3` and `m4a`.
 
+## If something fails
+
+Turn on **Verbose logging** in Settings (no restart needed), or start with `--verbose` (or set `BEATTHIEF_VERBOSE=1`), to print detailed logs to the console: versions, every job, the ffmpeg commands and yt-dlp's own debug output. `--log-file beatthief.log` also saves the full log to a file, which is what to attach to a bug report. Check it before sharing, as it contains your file paths and the links you downloaded.
+
+```bash
+python -m beatthief web --verbose --log-file beatthief.log
+./run.sh web --verbose            # or .\run.bat web --verbose
+```
+
 ## Updates
 
 If you cloned the repository, the web interface checks the git remote when it starts and offers to update when there are new commits. **Update and restart** runs `git pull --ff-only` (it never overwrites your local changes) and restarts BeatThief, installing new requirements if needed. It needs the `git` command. Set `BEATTHIEF_NO_UPDATE_CHECK=1` to switch the check off.

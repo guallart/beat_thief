@@ -643,6 +643,20 @@
     </div>
   </section>
 
+  <section class="box">
+    <div class="box-header">Troubleshooting</div>
+    <div class="setting">
+      <div class="setting-text">
+        <label for="verbose-toggle">Verbose logging</label>
+        <div class="hint">Prints detailed logs (every download, ffmpeg and yt-dlp's debug output) to the console where BeatThief is running. Turn it on when something fails and you need to see why.</div>
+      </div>
+      <div class="setting-control">
+        <input type="checkbox" id="verbose-toggle">
+        <div class="msg" id="verbose-msg"></div>
+      </div>
+    </div>
+  </section>
+
   <p class="hint">Settings are stored in <code>config.json</code> at the project root, and the command line reads the same file, so changes apply right away.</p>
 </main>
 
@@ -1022,6 +1036,7 @@ function applySettings(s) {
   for (const sel of [$("#format"), $("#default-format")]) sel.innerHTML = options;
   $("#format").value = pick;
   $("#default-format").value = s.default_format;
+  $("#verbose-toggle").checked = !!s.verbose;
 
   const l = s.rate_limit;
   limitInputs.forEach((i) => (i.value = i.dataset.key === "window" ? minutes(l.window) : l[i.dataset.key]));
@@ -1047,6 +1062,9 @@ async function putSettings(body, msgEl, okText) {
 
 // Default format saves as soon as you pick it.
 $("#default-format").onchange = (e) => putSettings({ default_format: e.target.value }, $("#format-msg"), "Saved.");
+
+// Verbose logging too: it takes effect immediately, no restart.
+$("#verbose-toggle").onchange = (e) => putSettings({ verbose: e.target.checked }, $("#verbose-msg"), e.target.checked ? "Verbose logging on." : "Verbose logging off.");
 
 // Rate limit
 function readLimits() {

@@ -19,6 +19,8 @@ import time
 import uuid
 from pathlib import Path
 
+from .log import log
+
 ROOT = Path(__file__).resolve().parent.parent
 RESTART = 75                  # exit codes understood by the supervisor
 RESTART_AND_INSTALL = 76
@@ -58,6 +60,7 @@ def check() -> dict:
             return {"state": "unavailable", "message": "The current branch doesn't track a remote branch."}
         fetch = _git("fetch", "--quiet", timeout=25)
         if fetch.returncode != 0:
+            log.warning("git fetch failed: %s", fetch.stderr.strip())
             return {"state": "error", "message": (fetch.stderr.strip().splitlines() or ["Could not reach the remote."])[0]}
         counts = _out("rev-list", "--left-right", "--count", "HEAD...@{u}").split()
         ahead, behind = (int(counts[0]), int(counts[1])) if len(counts) == 2 else (0, 0)
@@ -73,6 +76,7 @@ def check() -> dict:
             "dirty": bool(_out("status", "--porcelain", "--untracked-files=no")),
         }
     except (OSError, subprocess.SubprocessError) as e:      # git not installed, timeout...
+        log.warning("Update check failed: %s", e)
         return {"state": "error", "message": str(e) or "Could not check for updates."}
 
 
@@ -122,6 +126,7 @@ def _apply():
         pull = _git("pull", "--ff-only", timeout=180)
         if pull.returncode != 0:
             text = (pull.stderr or pull.stdout).strip()
+            log.error("git pull failed: %s", text)
             return _fail("git pull failed:\n" + "\n".join(text.splitlines()[-6:]))
         new = _out("rev-parse", "HEAD")
         needs_install = "requirements.txt" in _out("diff", "--name-only", old, new).split()

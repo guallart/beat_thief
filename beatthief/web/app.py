@@ -11,6 +11,8 @@ from concurrent.futures import ThreadPoolExecutor
 import yt_dlp
 from flask import Flask, Response, abort, jsonify, request, send_from_directory
 
+from .. import log as logging_setup
+from ..log import log, verbose
 from .. import analysis, config, converter, downloader, tagging, throttle, updater, waveform
 from ..sources import is_playlist, validate_and_clean_url
 
@@ -56,6 +58,7 @@ def _run_job(job_id, run):
         return
     with jobs_lock:
         url, audio_format = jobs[job_id]["url"], jobs[job_id]["format"]
+    log.info("Job %s started: %s (%s)", job_id, url, audio_format)
     _update(job_id, run, status="downloading", progress=0)
 
     def on_wait(seconds_left):
@@ -77,6 +80,7 @@ def _run_job(job_id, run):
     try:
         paths = downloader.fetch_audio(url, on_progress=on_progress, on_wait=on_wait,
                                           audio_format=audio_format)
+        log.info("Job %s finished: %s", job_id, ", ".join(os.path.basename(p) for p in paths))
         if _is_stale(job_id, run):  # cancelled while converting: that step can't be interrupted, so remove its result
             for p in paths:
                 try:
@@ -89,6 +93,10 @@ def _run_job(job_id, run):
                 title=os.path.splitext(os.path.basename(paths[0]))[0])
     except Exception as e:
         message = str(e).replace("ERROR: ", "").strip() or "Download failed."
+        if isinstance(e, yt_dlp.utils.DownloadCancelled):
+            log.info("Job %s cancelled", job_id)
+        else:
+            log.error("Job %s failed (%s): %s", job_id, url, message, exc_info=verbose())
         _update(job_id, run, status="error", error=message)
 
 
@@ -181,6 +189,7 @@ def create_jobs():
         try:
             tracks = downloader.list_playlist(value, source)
         except Exception as e:
+            log.error("Could not read the playlist %s: %s", value, e, exc_info=verbose())
             results.append({"input": raw, "error": str(e).replace("ERROR: ", "").strip() or "Could not read the playlist."})
             continue
         if not tracks:
@@ -226,6 +235,7 @@ def retry_job(job_id):
             return "", 204
         if any(j is not job and j["url"] == job["url"] and j["status"] not in ("error", "cancelled") for j in jobs.values()):
             return jsonify({"error": DUPLICATE}), 409
+        log.info("Job %s: retry", job_id)
         job["run"] += 1
         job.update(status="queued", progress=0, cooldown=0, error=None)
         run, source = job["run"], job["source"]
@@ -240,6 +250,7 @@ def cancel_job(job_id):
     with jobs_lock:
         job = jobs.get(job_id)
         if job and job["status"] not in FINISHED:
+            log.info("Job %s: cancel requested", job_id)
             job.update(status="cancelled", cooldown=0)
     return "", 204
 
@@ -251,6 +262,7 @@ def _settings_payload():
         "formats": list(downloader.FORMATS),
         "rate_limit": throttle.limits(),
         "rate_limit_defaults": throttle.DEFAULTS,
+        "verbose": verbose(),
     }
 
 
@@ -261,7 +273,7 @@ def get_settings():
 
 @app.put("/api/settings")
 def update_settings():
-    """Body: any of {"download_dir": str, "default_format": str, "rate_limit": {...} | null}.
+    """Body: any of {"download_dir": str, "default_format": str, "rate_limit": {...} | null, "verbose": bool}.
     Everything is validated before anything is saved."""
     data = request.get_json(silent=True) or {}
     try:
@@ -273,6 +285,9 @@ def update_settings():
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 
+    if "verbose" in data:
+        config.set_setting("verbose", bool(data["verbose"]))
+        logging_setup.set_verbose(bool(data["verbose"]))
     if "default_format" in data:
         config.set_setting("default_format", data["default_format"])
     if "rate_limit" in data:  # null / empty resets to the defaults
@@ -296,7 +311,9 @@ def convert_file():
         with tag_write_lock:  # nothing else writes tags to files at the same moment
             path = converter.convert(upload, upload.filename or "audio", audio_format)
     except Exception as e:
+        log.error("Conversion of %s to %s failed: %s", upload.filename, audio_format, e, exc_info=verbose())
         return jsonify({"error": str(e) or "Conversion failed."}), 422
+    log.info("Converted %s -> %s", upload.filename, path.name)
     return jsonify({"path": path.relative_to(_base_dir()).as_posix(), "name": path.name, "size": path.stat().st_size})
 
 
@@ -333,6 +350,7 @@ def get_waveform(rel):
         try:
             cached = waveform.compute(path)
         except Exception as e:
+            log.warning("Waveform of %s failed: %s", rel, e, exc_info=verbose())
             return jsonify({"error": str(e) or "Could not analyse the file."}), 422
         with waveform_lock:
             if len(waveform_cache) > 50:
@@ -373,6 +391,7 @@ def update_tags():
             results.append({"path": rel, "ok": True, **_file_entry(base, path)})
         except Exception as e:
             reason = "File not found." if getattr(e, "code", None) == 404 else (str(e) or "Could not write tags.")
+            log.warning("Writing tags to %s failed: %s", rel, reason, exc_info=verbose())
             results.append({"path": rel, "ok": False, "error": reason})
     return jsonify(results)
 
@@ -393,6 +412,7 @@ def _run_analysis(rel):
         outcome = {"status": "done", **result}
     except Exception as e:
         reason = "File not found." if getattr(e, "code", None) == 404 else (str(e) or "Analysis failed.")
+        log.warning("Analysis of %s failed: %s", rel, reason, exc_info=verbose())
         outcome = {"status": "error", "error": reason}
     with analyses_lock:
         analyses[rel] = outcome

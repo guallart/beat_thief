@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 
 from .config import get_download_dir
+from .log import log
 
 # format -> (label, ffmpeg codec arguments). Lossless formats keep the source quality.
 FORMATS = {
@@ -40,7 +41,11 @@ def _run(src: Path, dest: Path, audio_format: str, with_cover: bool):
     if with_cover:
         cmd += ["-map", "0:v:0", "-c:v", "copy", "-disposition:v", "attached_pic"]
     cmd += FORMATS[audio_format][1] + [str(dest)]
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+    log.debug("Running: %s", " ".join(cmd))
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+    if result.returncode != 0:
+        log.debug("ffmpeg exited with %d: %s", result.returncode, (result.stderr or "").strip())
+    return result
 
 
 def convert(upload, filename: str, audio_format: str) -> Path:

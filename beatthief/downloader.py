@@ -6,6 +6,7 @@ import tempfile
 import yt_dlp
 
 from . import throttle
+from .log import YtdlpLogger, log, verbose
 from .config import get_download_dir, get_setting
 from .sources import detect_source
 from .tagging import tag_downloaded_file
@@ -28,6 +29,9 @@ def list_playlist(url: str, source: str):
     Returns [{"url": ..., "title": ...}]. Raises on failure."""
     opts = {"extract_flat": "in_playlist", "skip_download": True, "quiet": True, "no_warnings": True,
             "playlistend": MAX_PLAYLIST}
+    if verbose():
+        opts.update({"verbose": True, "logger": YtdlpLogger(), "no_warnings": False})
+    log.info("Reading playlist %s", url)
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
     tracks = []
@@ -39,6 +43,7 @@ def list_playlist(url: str, source: str):
             else entry.get("url") or entry.get("webpage_url")
         if link:
             tracks.append({"url": link, "title": title})
+    log.info("Playlist has %d usable tracks", len(tracks))
     return tracks
 
 
@@ -64,6 +69,9 @@ def _build_opts(workdir: str, playlist: bool, audio_format: str, on_progress=Non
     if playlist:
         opts["sleep_interval"] = 5       # random pause between tracks of a playlist
         opts["max_sleep_interval"] = 10
+
+    if verbose():
+        opts.update({"verbose": True, "logger": YtdlpLogger(), "no_warnings": False})
 
     if on_progress:
         def hook(d):
@@ -93,7 +101,9 @@ def fetch_audio(url: str, playlist: bool = False, on_progress=None, on_wait=None
     if audio_format not in FORMATS:
         raise ValueError(f"Unsupported format: {audio_format}")
 
+    log.info("Downloading %s as %s", url, audio_format)
     throttle.wait_turn(detect_source(url) or "other", on_wait)
+    log.debug("Rate limiter released %s", url)
 
     downloads_dir = str(get_download_dir())
     os.makedirs(downloads_dir, exist_ok=True)
@@ -111,7 +121,7 @@ def fetch_audio(url: str, playlist: bool = False, on_progress=None, on_wait=None
                 if path and os.path.exists(path):
                     error = tag_downloaded_file(path, entry)
                     if error:
-                        print(f"Could not tag {os.path.basename(path)}: {error}")
+                        log.warning("Could not tag %s: %s", os.path.basename(path), error)
 
         paths = []
         for name in sorted(os.listdir(workdir)):
@@ -123,6 +133,7 @@ def fetch_audio(url: str, playlist: bool = False, on_progress=None, on_wait=None
 
     if not paths:
         raise RuntimeError("No audio file was produced.")
+    log.info("Saved %s", ", ".join(paths))
     return paths
 
 
@@ -131,5 +142,5 @@ def download_audio(url: str, playlist: bool = False, audio_format: str = None):
     try:
         return True, fetch_audio(url, playlist, audio_format=audio_format)
     except Exception as e:
-        print(f"An error occurred: {e}")
+        log.error("Download failed: %s", e, exc_info=verbose())
         return False, []

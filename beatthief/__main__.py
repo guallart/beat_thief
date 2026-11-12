@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 
+from . import log as logging_setup
 from . import updater
 from .downloader import FORMATS, download_audio
 
@@ -43,14 +44,18 @@ def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else list(argv)
     parser = argparse.ArgumentParser(prog="beatthief", description="Download and tag audio from YouTube and SoundCloud.")
     commands = parser.add_subparsers(dest="command", required=True)
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("-v", "--verbose", action="store_true",
+                        help="print detailed logs (also BEATTHIEF_VERBOSE=1); yt-dlp's debug output included")
+    common.add_argument("--log-file", metavar="PATH", help="also write a full debug log to this file")
 
-    web = commands.add_parser("web", help="start the web interface")
+    web = commands.add_parser("web", parents=[common], help="start the web interface")
     web.add_argument("--host", default="127.0.0.1",
                      help="address to listen on; use 0.0.0.0 to expose it on your network (there is no login!)")
     web.add_argument("--port", type=int, default=8000)
     web.add_argument("--no-browser", action="store_true", help="don't open the browser automatically")
 
-    download = commands.add_parser("download", help="download a track or a playlist from the terminal")
+    download = commands.add_parser("download", parents=[common], help="download a track or a playlist from the terminal")
     download.add_argument("url")
     download.add_argument("--format", choices=list(FORMATS), help="default: the format chosen in Settings (wav at first)")
     download.add_argument("--playlist", action="store_true", help="download the whole playlist, not just one track")
@@ -60,10 +65,12 @@ def main(argv=None) -> int:
     if args.command == "web":
         if not updater.supervised():
             return supervise(argv)
+        logging_setup.setup(args.verbose, args.log_file)
         from .web.app import run
         run(args.host, args.port, open_browser=not args.no_browser)
         return 0
 
+    logging_setup.setup(args.verbose, args.log_file)
     ok, files = download_audio(args.url, playlist=args.playlist, audio_format=args.format)
     for path in files:
         print(path)
