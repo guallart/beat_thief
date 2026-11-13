@@ -847,6 +847,16 @@ urlInput.addEventListener("paste", (e) => {
   addLinks(text);
   list_scroll_end();
 });
+document.addEventListener("paste", (e) => {           // Ctrl+V anywhere on the Download page
+  if ($("#page-download").hidden || e.defaultPrevented) return;
+  const t = e.target;
+  if (t !== urlInput && t.closest && t.closest("input, textarea, select, [contenteditable]")) return;
+  const text = e.clipboardData.getData("text");
+  if (!text) return;
+  e.preventDefault();
+  addLinks(text);
+  list_scroll_end();
+});
 urlInput.addEventListener("input", () => {            // fallback: multi-token text inserted by other means
   if (/[\s,;]/.test(urlInput.value.trim())) { addLinks(urlInput.value); urlInput.value = ""; list_scroll_end(); }
 });
